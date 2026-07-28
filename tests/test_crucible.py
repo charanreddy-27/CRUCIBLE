@@ -300,6 +300,28 @@ def test_rejects_zero_candidates():
     assert "at least 1" in proc.stderr
 
 
+@requires_tools
+def test_budget_and_round_caps_are_overridable(fake_claude, tmp_path):
+    """The caps must be settable per run — trying a real idea cheaply is the
+    single most common thing you want to do, and editing source for it is silly."""
+    state, _, out = run_crucible(
+        fake_claude, tmp_path, "allred", "cap override", "--max-rounds", "2", "--budget", "9"
+    )
+    assert state["stop_reason"] == "max_rounds"
+    assert state["round"] == 2, "the --max-rounds override must beat the module default"
+    assert "2 rounds" in out and "$9.00" in out
+
+
+@pytest.mark.parametrize("flag,value", [("--max-rounds", "0"), ("--budget", "0"), ("-n", "0")])
+def test_rejects_nonsense_caps(flag, value):
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "crucible.py"), "x", flag, value],
+        capture_output=True, text=True,
+    )  # fmt: skip
+    assert proc.returncode == 1
+    assert "at least 1" in proc.stderr or "greater than 0" in proc.stderr
+
+
 def test_reports_version():
     proc = subprocess.run(
         [sys.executable, str(ROOT / "crucible.py"), "--version"],

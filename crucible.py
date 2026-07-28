@@ -74,13 +74,11 @@ CANDIDATE_ANGLES = [
 # acceptable ONLY because cwd is a throwaway candidate worktree created by this
 # run. Never point CRUCIBLE at an existing repo.
 #
-# Set BUILDER_ALLOWED_TOOLS to a whitelist to use scoped permissions instead.
-# That flag is also *required* when running as root: the CLI refuses
-# --dangerously-skip-permissions under root/sudo, so a containerised or CI run
-# has to take this path. Preflight enforces it rather than letting every builder
+# Set BUILDER_ALLOWED_TOOLS — here or via CRUCIBLE_BUILDER_ALLOWED_TOOLS — to use
+# scoped permissions instead. That is *required* when running as root: the CLI
+# refuses --dangerously-skip-permissions under root/sudo, so containers and CI
+# have to take this path. Preflight enforces it rather than letting every builder
 # invocation fail with an unparseable envelope.
-# Settable here or via CRUCIBLE_BUILDER_ALLOWED_TOOLS, so a container or CI run
-# can take the scoped path without editing source.
 BUILDER_ALLOWED_TOOLS: str | None = os.environ.get("CRUCIBLE_BUILDER_ALLOWED_TOOLS") or None
 BUILDER_ALLOWED_TOOLS_SUGGESTION = (
     "Edit,Write,Read,Glob,Grep,Bash(git *),Bash(python *),Bash(pytest *),Bash(ruff *)"
@@ -659,6 +657,10 @@ round produces none, the least-broken attempt is carried forward instead.
 
 
 def main() -> int:
+    # --budget and --max-rounds rebind these, so every reference — loop, stop
+    # rules, report — agrees with what the caller actually asked for.
+    global MAX_ROUNDS, MAX_COST_USD
+
     parser = argparse.ArgumentParser(
         prog="crucible", description="Build → critique → rebuild loop agent."
     )
@@ -669,11 +671,26 @@ def main() -> int:
         "-n", "--candidates", type=int, default=CANDIDATES,
         help=f"builders forked per round (default {CANDIDATES}; 1 = sequential v1 loop)",
     )  # fmt: skip
+    parser.add_argument(
+        "--budget", type=float, default=MAX_COST_USD, metavar="USD",
+        help=f"cumulative spend cap (default {MAX_COST_USD:.2f})",
+    )  # fmt: skip
+    parser.add_argument(
+        "--max-rounds", type=int, default=MAX_ROUNDS, metavar="N",
+        help=f"round cap (default {MAX_ROUNDS})",
+    )  # fmt: skip
     parser.add_argument("--version", action="version", version=f"crucible {__version__}")
     args = parser.parse_args()
 
     if args.candidates < 1:
         die("--candidates must be at least 1")
+    if args.max_rounds < 1:
+        die("--max-rounds must be at least 1")
+    if args.budget <= 0:
+        die("--budget must be greater than 0")
+
+    # Rebind the caps so every reference — loop, stop rules, report — agrees.
+    MAX_ROUNDS, MAX_COST_USD = args.max_rounds, args.budget
 
     preflight()
 

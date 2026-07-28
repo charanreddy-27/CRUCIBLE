@@ -108,7 +108,14 @@ schema is missing — a skipped gate is a lie about the result.
 python crucible.py IDEA.md          # from a structured idea file
 python crucible.py IDEA.md -n 5     # five candidates per round
 python crucible.py IDEA.md -n 1     # sequential: one builder per round
+
+python crucible.py IDEA.md -n 1 --budget 3 --max-rounds 3   # try it cheaply
 ```
+
+`--budget` and `--max-rounds` override the module defaults per run. Worth knowing
+before your first real run: every `claude` invocation carries roughly $0.20 of
+cache creation before it does any work, so a wide run adds up faster than the
+per-round costs suggest.
 
 ### Getting the result
 
