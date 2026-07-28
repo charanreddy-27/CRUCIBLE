@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRUCIBLE — Charan Reddy Chanda</title>
+<meta name="description" content="A build → critique → rebuild loop agent. N builders race in isolated git worktrees, deterministic gates judge, a fresh-context critic scores, and plain Python decides when it's done.">
+<link rel="canonical" href="https://crucible.charanreddy.dev/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Charan Reddy Chanda">
+<meta property="og:title" content="CRUCIBLE — one idea in, working repo out">
+<meta property="og:description" content="N builders race in isolated git worktrees, deterministic gates judge, a fresh-context critic scores, and plain Python decides when it's done.">
+<meta property="og:url" content="https://crucible.charanreddy.dev/">
+<meta property="og:image" content="https://crucible.charanreddy.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CRUCIBLE — one idea in, working repo out">
+<meta name="twitter:description" content="N builders race in isolated git worktrees, deterministic gates judge, a fresh-context critic scores, and plain Python decides when it's done.">
+<meta name="twitter:image" content="https://crucible.charanreddy.dev/og.png">
+<meta name="author" content="Chanda Charan Reddy">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/"><span class="dot" aria-hidden="true"></span>CRUCIBLE</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="/project">The build</a>
+      <a href="/about">About</a>
+      <a href="https://github.com/charanreddy-27/CRUCIBLE">GitHub&nbsp;↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero wrap">
+  <p class="eyebrow">Build → critique → rebuild</p>
+  <h1>One idea in, <span class="accent">working repo</span> out.</h1>
+  <p class="lead">
+    CRUCIBLE runs Claude Code in a loop. Several builders race the same problem,
+    deterministic gates judge the result, a critic that has never seen the build
+    scores it, and plain Python decides whether it's actually done.
+    <strong>"Good enough" is a rule here, not a feeling.</strong>
+  </p>
+  <div class="cta-row">
+    <a class="btn btn-primary" href="https://github.com/charanreddy-27/CRUCIBLE">View on GitHub</a>
+    <a class="btn" href="/project">How I built it</a>
+    <a class="btn" href="#quickstart">Quickstart</a>
+  </div>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">The problem</p>
+  <h2>Ask a model if its own code is good and it will tell you yes.</h2>
+  <p>
+    That's the whole trouble with looping an LLM on its own output. It grades its
+    work in the same context that produced it, gets agreeable, and converges on
+    something that reads well and doesn't run. You end up as the loop — pasting
+    errors back in, deciding when to stop, losing track of which version was
+    actually the good one.
+  </p>
+  <p>
+    CRUCIBLE takes those three jobs away from the model. Tests and lint decide
+    correctness. A separate session with read-only tools and no memory of the
+    build does the reviewing. A controller written in ordinary Python decides
+    when to stop — and it never asks anyone's opinion.
+  </p>
+</section>
+
+<section class="wrap" id="how">
+  <p class="eyebrow">How it works</p>
+  <h2>Every round is a tournament.</h2>
+  <p>
+    N builders fork from the same commit into isolated git worktrees and work in
+    parallel. Each gets a different emphasis, because independent samples of one
+    prompt just cluster around one answer. Only gates-green candidates reach the
+    critic. The winner fast-forwards onto trunk; the losers stay as branches.
+  </p>
+
+  <div class="term" role="img" aria-label="Diagram of one CRUCIBLE round: trunk forks into three candidates, each is gated, survivors are critiqued, and the winner is promoted back to trunk.">
+    <div class="term-bar">
+      <i></i><i></i><i></i><span>one round</span>
+    </div>
+<pre><code>              <span class="c-dim">trunk @ a1b2c3d</span>
+                     │
+       ┌─────────────┼─────────────┐
+       ▼             ▼             ▼
+   <span class="c-acc">candidate 1</span>   <span class="c-acc">candidate 2</span>   <span class="c-acc">candidate 3</span>     <span class="c-dim">fresh session each,</span>
+   straight      simplest      robustness    <span class="c-dim">own worktree, parallel</span>
+       │             │             │
+       ▼             ▼             ▼
+   <span class="c-bad">gates ✗</span>       <span class="c-ok">gates ✓</span>       <span class="c-ok">gates ✓</span>       <span class="c-dim">pytest + ruff, by the</span>
+       │             │             │          <span class="c-dim">controller — never a model</span>
+       ✕             ▼             ▼
+   <span class="c-dim">not reviewed</span>   <span class="c-acc">critic 7/10</span>   <span class="c-acc">critic 9/10</span>     <span class="c-dim">read-only tools, no</span>
+                     │             │          <span class="c-dim">memory of the build</span>
+                     └──────┬──────┘
+                            ▼
+                   <span class="c-ok">winner → trunk</span>            <span class="c-dim">ff-only, tagged round-N</span>
+</code></pre>
+  </div>
+
+  <div class="grid grid-3" style="margin-top:26px">
+    <div class="card">
+      <span class="k">Invariant 01</span>
+      <h3>Fresh context, every round</h3>
+      <p>No <code>--resume</code>. The repo on disk is the state; the prompt carries the idea and the latest feedback. No context rot, and every round debugs independently.</p>
+    </div>
+    <div class="card">
+      <span class="k">Invariant 02</span>
+      <h3>The controller is code</h3>
+      <p>Stop decisions are rules: pass, round cap, stall, budget. First match wins. No model gets a vote on whether it's finished.</p>
+    </div>
+    <div class="card">
+      <span class="k">Invariant 03</span>
+      <h3>The critic is a stranger</h3>
+      <p>Separate invocation, read-only tools, adversarial rubric, and a stronger model than the builder — so it isn't grading its own homework.</p>
+    </div>
+    <div class="card">
+      <span class="k">Invariant 04</span>
+      <h3>Best ≠ last</h3>
+      <p>Every round is a commit and a tag. The run hands back the highest-scoring round, not whatever happened to come out of the final one.</p>
+    </div>
+    <div class="card">
+      <span class="k">Invariant 05</span>
+      <h3>A chain is its weakest link</h3>
+      <p>A round scores <code>min()</code> across correctness, completeness, robustness, code quality and test quality. Brilliant code with hollow tests does not pass.</p>
+    </div>
+    <div class="card">
+      <span class="k">Invariant 06</span>
+      <h3>Losers are kept</h3>
+      <p>Every candidate that ever built survives as a branch. The rejected approach is often the more interesting diff.</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">The gaming problem</p>
+  <h2>Any gate you can automate, a model can satisfy dishonestly.</h2>
+  <p>
+    Tell something to make <code>pytest</code> pass and it can write
+    <code>assert True</code> and go home. So <code>test_quality</code> is a scored
+    dimension in its own right, with instructions to cap it at 4 for tests that
+    are vacuous or tautological. Green tests are necessary. They were never
+    sufficient.
+  </p>
+  <p>
+    The gates also run with bytecode caching disabled — because pytest keys its
+    assertion-rewrite cache on file mtime and size, and a builder that rewrites a
+    same-size file inside one second can get graded on stale bytecode. A gate
+    that lies is worse than no gate at all.
+  </p>
+</section>
+
+<section class="wrap" id="quickstart">
+  <p class="eyebrow">Quickstart</p>
+  <h2>Two commands.</h2>
+  <pre><code><span class="c-dim"># needs the Claude Code CLI on PATH</span>
+pip install -r requirements.txt
+
+python crucible.py <span class="c-acc">"CLI expense tracker: add, list, summary. JSON storage."</span>
+python crucible.py IDEA.md <span class="c-acc">-n 5</span>   <span class="c-dim"># five candidates per round</span>
+python crucible.py IDEA.md <span class="c-acc">-n 1</span>   <span class="c-dim"># sequential, one builder</span></code></pre>
+  <p>
+    A run leaves behind a git repo where <code>best</code> is tagged on the
+    highest-scoring round, every candidate is a branch, and
+    <code>RUN_REPORT.md</code> shows the whole tournament — who ran, who went
+    green, who won, and what it cost.
+  </p>
+  <pre><code>cd runs/&lt;run-id&gt;/workspace
+git checkout best
+git branch --list <span class="c-acc">'cand-*'</span>        <span class="c-dim"># the roads not taken</span>
+git diff round-2 cand-r2-1     <span class="c-dim"># what the loser did differently</span></code></pre>
+  <p class="muted" style="font-size:14.5px">
+    It refuses to start if a gate tool, prompt template or the critic schema is
+    missing. A skipped gate is a lie about the result, so it would rather not run.
+  </p>
+</section>
+
+<section class="wrap">
+  <div class="grid grid-2">
+    <div>
+      <h2>Read the code</h2>
+      <p class="muted">
+        One 830-line Python file, three markdown prompts, one JSON schema. No
+        framework, no dependencies beyond the gate tools themselves.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/charanreddy-27/CRUCIBLE">GitHub</a>
+        <a class="btn" href="https://github.com/charanreddy-27/CRUCIBLE/blob/main/docs/PROJECT_DEEP_DIVE.md">Deep dive</a>
+      </div>
+    </div>
+    <div>
+      <h2>Or the story</h2>
+      <p class="muted">
+        Why it exists, the month it nearly died, and how you test a system whose
+        entire job is being unpredictable.
+      </p>
+      <div class="cta-row">
+        <a class="btn" href="/project">About the build</a>
+        <a class="btn" href="/about">About me</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-row">
+    <span>Built by <a href="https://www.charanreddy.dev">Charan</a>. Crafted with intent.</span>
+    <span class="sep"></span>
+    <a href="https://github.com/charanreddy-27">GitHub</a>
+    <a href="https://www.linkedin.com/in/chandacharanreddy/">LinkedIn</a>
+    <a href="https://cal.com/charanreddy-27/30min">Book a call</a>
+    <a href="https://www.charanreddy.dev">Portfolio</a>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,124 +1,191 @@
+<div align="center">
+
 # CRUCIBLE
 
-Build → critique → rebuild loop agent. One idea in, working repo out.
+### One idea in, working repo out.
 
-Claude Code (headless) builds the project, deterministic gates and a
-fresh-context critic score it, and a plain-Python controller decides whether to
-iterate or stop. "Satisfied" is a set of rules, never the model's feeling.
+**[Live site](https://crucible.charanreddy.dev)** · **[How it works](#how-it-works)** · **[Deep dive](docs/PROJECT_DEEP_DIVE.md)** · **[Deploy](docs/DEPLOYMENT.md)**
 
-Every round is a **tournament**: N builders fork from the same commit into
-isolated git worktrees, build in parallel under different emphases, and only
-the winner is promoted. Losing attempts are kept as branches.
+[![CI](https://github.com/charanreddy-27/CRUCIBLE/actions/workflows/ci.yml/badge.svg)](https://github.com/charanreddy-27/CRUCIBLE/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[`CRUCIBLE_SPEC.md`](CRUCIBLE_SPEC.md) is the v1 design record; best-of-N was
-added after it and is documented here.
+</div>
 
-## Install
+---
+
+CRUCIBLE runs Claude Code in a loop. Several builders race the same problem in
+isolated git worktrees, deterministic gates judge the result, a critic that has
+never seen the build scores it, and plain Python decides whether it's actually
+done.
+
+**"Good enough" is a rule here, not a feeling.**
+
+> ![CRUCIBLE run](site/og.png)
+>
+> *Replace with a terminal recording of a live run — see [DEPLOYMENT.md](docs/DEPLOYMENT.md#screenshots-and-recordings).*
+
+## The problem
+
+Ask a model whether its own code is good and it will tell you yes. It's grading
+in the same context that produced the work, which makes it agreeable in exactly
+the way a reviewer must not be. So you become the loop — pasting tracebacks
+back in, eyeballing diffs, deciding on no particular basis that this is
+probably fine, then discovering two versions ago was better and you didn't keep
+it.
+
+CRUCIBLE takes three decisions away from the model:
+
+| Decision | Who makes it |
+|---|---|
+| Does the code run? | `pytest` and `ruff`, run by the controller |
+| Is the code any good? | A separate session, read-only tools, no memory of the build |
+| Should we stop? | Rules in plain Python — pass, round cap, stall, budget |
+
+What's left for the model is the part it's good at: writing the thing.
+
+## How it works
+
+Every round is a tournament. N builders fork from the same commit into isolated
+git worktrees and work in parallel, each under a different emphasis. Only
+gates-green candidates reach the critic. The winner fast-forwards onto trunk;
+the losers stay as branches.
+
+```
+              trunk @ a1b2c3d
+                     │
+       ┌─────────────┼─────────────┐
+       ▼             ▼             ▼
+   candidate 1   candidate 2   candidate 3     fresh session each,
+   straight      simplest      robustness      own worktree, parallel
+       │             │             │
+       ▼             ▼             ▼
+   gates ✗       gates ✓       gates ✓         pytest + ruff, by the
+       │             │             │            controller — never a model
+       ✕             ▼             ▼
+  not reviewed  critic 7/10   critic 9/10      read-only tools, no
+                     │             │            memory of the build
+                     └──────┬──────┘
+                            ▼
+                   winner → trunk               ff-only, tagged round-N
+```
+
+### Six invariants
+
+1. **Fresh context every round.** No `--resume`. The repo on disk is the state; the prompt carries the idea and the latest feedback.
+2. **The controller is code.** Stop decisions are rules, first match wins. No model votes on whether it's finished.
+3. **The critic is a stranger.** Separate invocation, read-only tools, adversarial rubric, and a stronger model than the builder.
+4. **Best ≠ last.** Every round is a commit and a tag. The run returns the highest-scoring round.
+5. **A chain is its weakest link.** A round scores `min()` across five dimensions, so brilliant code with hollow tests does not pass.
+6. **Losers are kept.** Every candidate survives as a branch. The rejected approach is often the more interesting diff.
+
+## Features
+
+- **Best-of-N tournament** per round, in real git worktrees — no copying, no collisions
+- **Decorrelated candidates** — each builder gets a different emphasis, because identical prompts produce identical answers
+- **Deterministic gates** the model never runs and cannot sweet-talk
+- **Schema-enforced critique** via `--json-schema`, so no regex and no parse-retry loop
+- **Anti-gaming rubric** — `test_quality` is scored separately and capped at 4 for vacuous tests
+- **Fault tolerance** — a dead builder drops its candidate, not the run
+- **Full forensics** — every round writes `builder.json`, `gates.txt`, `critique.json`, `selection.json`, and a `RUN_REPORT.md`
+- **Rule-based stopping** — `pass` / `max_rounds` / `stalled` / `budget`, with a hard cost cap
+
+## Quickstart
 
 ```bash
-pip install -r requirements.txt          # pytest, pytest-timeout, ruff
+git clone https://github.com/charanreddy-27/CRUCIBLE.git
+cd CRUCIBLE
+pip install -r requirements.txt        # pytest, pytest-timeout, ruff
+
+python crucible.py "CLI expense tracker: add, list, summary. JSON storage."
 ```
 
-CRUCIBLE itself is stdlib-only — those dependencies are the *gates* it runs
-against the code it builds. You also need the `claude` CLI on PATH
-([headless mode docs](https://code.claude.com/docs/en/headless)).
-
-## Run
+You also need the [`claude` CLI](https://code.claude.com/docs/en/headless) on
+PATH. CRUCIBLE refuses to start if a gate tool, prompt template or the critic
+schema is missing — a skipped gate is a lie about the result.
 
 ```bash
-python crucible.py IDEA.md            # from an idea file
-python crucible.py "one-line idea"    # or inline text
-python crucible.py IDEA.md -n 5       # 5 candidates per round
-python crucible.py IDEA.md -n 1       # sequential: one builder per round
+python crucible.py IDEA.md          # from a structured idea file
+python crucible.py IDEA.md -n 5     # five candidates per round
+python crucible.py IDEA.md -n 1     # sequential: one builder per round
 ```
 
-`crucible.py` refuses to start if any gate tool, prompt template, or the critic
-schema is missing — a gate is never silently skipped.
-
-## What a run produces
-
-```
-runs/2026-07-12_1430_expense-tracker/
-├── IDEA.md                       # the idea, copied in at run start
-├── workspace/                    # the git repo, trunk = promoted winners
-├── candidates/round_N/cand_K/    # per-candidate worktrees (pruned after each round)
-├── rounds/round_N/
-│   ├── cand_K/                   # builder.json, gates.txt, critique.json
-│   └── selection.json            # who ran, who won, and why
-├── state.json                    # rewritten every round — a crashed run is inspectable
-└── RUN_REPORT.md                 # stop reason, round table, candidate detail, cost
-```
-
-Loop metadata lives outside the worktrees, so builders never see or edit it.
-
-To get the result:
+### Getting the result
 
 ```bash
-cd runs/<run-id>/workspace && git checkout best
-```
-
-`best` is the **highest-scoring** round, not the last one. Every promoted round
-is tagged `round-1` … `round-N`, and every candidate that ever built — winners
-and losers — survives as a branch `cand-r<round>-<id>`:
-
-```bash
-git branch --list 'cand-*'          # the whole tournament history
+cd runs/<run-id>/workspace
+git checkout best                   # highest-scoring round, not the last
+git branch --list 'cand-*'          # the roads not taken
 git diff round-2 cand-r2-1          # what the losing attempt did differently
 ```
 
-## The round
+Each run also leaves a `RUN_REPORT.md` with the whole tournament: who ran, who
+went green, who won, and what it cost.
 
-1. **Fork.** N candidates branch from trunk's current commit into separate git
-   worktrees. Shared object store, separate working trees — no collisions.
-2. **Build, in parallel.** Each candidate gets its own fresh `claude -p`
-   session (full tools) with a different *emphasis* appended to the prompt.
-3. **Gate.** `pytest` and `ruff` run per candidate, by the controller, never by
-   a model.
-4. **Critique the survivors.** Only gates-green candidates reach the critic
-   (fresh session, read-only tools, `--json-schema` structured verdict) — no
-   point reviewing broken code, and it saves opus calls.
-5. **Promote.** The winner fast-forwards onto trunk and gets tagged. Losers stay
-   as branches.
+## Tech stack
 
-A candidate's score is `min(scores.values())` across the five rubric dimensions:
-correctness, completeness, robustness, code_quality, test_quality. A chain is as
-strong as its weakest link. The winner is the highest such score; ties go to the
-lower candidate id.
+| | Why |
+|---|---|
+| **Python 3.11**, stdlib only | The component deciding when to stop should be the most boring code in the repo |
+| **Claude Code headless** (`claude -p`) | A real agent with real tools behind a JSON envelope reporting cost, turns and errors |
+| **`--json-schema`** | The critic's verdict is schema-enforced at the CLI — no parsing, no retries |
+| **git worktrees** | Isolation without copying; losers stay inspectable as branches |
+| **pytest + ruff** | Deterministic gates, impossible to sweet-talk |
+| **ThreadPoolExecutor** | The work is subprocess-bound, so threads are plenty |
 
-If **no** candidate passes the gates, the least-broken one (most gates passed)
-is carried forward and its failure output becomes the next round's feedback.
-If a single builder dies, the round continues on its survivors — only a round
-where *every* candidate dies terminates the run.
+## Testing
 
-### Why different emphases
+```bash
+python -m pytest tests/ -q
+ruff check .
+```
 
-Independent samples of one prompt cluster around one solution, so plain
-best-of-N buys surprisingly little. Each candidate instead gets a distinct
-angle — simplicity, robustness, structure, completeness — with candidate #1
-always reading the idea straight. Decorrelated attempts give the tournament
-something real to choose between. See `CANDIDATE_ANGLES` in `crucible.py`.
+The interesting logic decides which of several *model outputs* wins — untestable
+against a real model. So the suite ships a fake `claude` CLI
+([`tests/fake_claude.py`](tests/fake_claude.py)) that speaks the same JSON
+envelope and hands each candidate deliberately different quality. The end-to-end
+tests then run real loops — real worktrees, real gates — and assert that the
+right candidate won.
 
-## Stopping
+## Documentation
 
-Rule-based, first match wins: `pass` (every dimension ≥ threshold, empty
-`must_fix`, green gates) → `max_rounds` → `stalled` → `budget`. If every
-candidate's builder or critic fails twice, the run ends `builder_error` /
-`critic_error` with best-so-far preserved.
-
-## Config
-
-Top of `crucible.py`. Defaults: 5 rounds × 3 candidates, pass at 8/10, stall
-after 2 flat critic rounds, $5.00 budget, `sonnet` builds and `opus` critiques
-(a different, stronger model means less self-flattery).
-
-**Budget scales with N.** Three candidates burn roughly 3× the builder cost per
-round, plus one critic call per green candidate. The $5.00 cap is unchanged from
-v1, so raise `MAX_COST_USD` before running wide, or the budget rule will stop
-the run early.
+| | |
+|---|---|
+| [`docs/PROJECT_DEEP_DIVE.md`](docs/PROJECT_DEEP_DIVE.md) | Architecture, data flow, folder structure, tradeoffs |
+| [`docs/INTERVIEW_PREP.md`](docs/INTERVIEW_PREP.md) | Walkthrough, STAR stories, likely Q&A |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Shipping the site to Vercel, plus the manual checklist |
+| [`CRUCIBLE_SPEC.md`](CRUCIBLE_SPEC.md) | The original v1 design record |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed and when |
 
 ## Safety
 
 Builders run with `--dangerously-skip-permissions`. That is acceptable **only
-because** each one's cwd is a throwaway candidate worktree created by the run.
-Never point CRUCIBLE at an existing repo. A stricter `--allowedTools` whitelist
-is left commented out in the config block.
+because** each one's working directory is a throwaway candidate worktree created
+by the run. **Never point CRUCIBLE at an existing repo.** A stricter
+`--allowedTools` whitelist is left commented out in the config block.
+
+---
+
+## About the developer
+
+I'm **Charan** — an AI & Automation Engineer in Bangalore. I ship production LLM
+systems: a Springer-published model that reads chest X-rays well enough for a
+radiologist to take seriously, and document pipelines that run themselves once
+you stop watching them.
+
+Before any of that, I wrote real-time control code for jet engines at DRDO. That
+job teaches you something the notebook never will: a millisecond of lag isn't a
+bug — it's a flameout.
+
+This is one project. The rest of them live at
+**[charanreddy.dev](https://www.charanreddy.dev)**.
+
+**Want to build something — or break something interesting?**
+
+[Book a call](https://cal.com/charanreddy-27/30min) ·
+[Email](mailto:charanreddychanda@gmail.com) ·
+[LinkedIn](https://www.linkedin.com/in/chandacharanreddy/) ·
+[GitHub](https://github.com/charanreddy-27) ·
+[ORCID](https://orcid.org/0009-0003-2414-6717)
+
+<sub>MIT licensed. Crafted with intent.</sub>

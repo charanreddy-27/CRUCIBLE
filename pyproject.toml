@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crucible-loop"
+version = "2.0.0"
+description = "Build → critique → rebuild loop agent. One idea in, working repo out."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Chanda Charan Reddy", email = "charanreddychanda@gmail.com" }]
+keywords = ["llm", "agent", "claude", "code-generation", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Code Generators",
+]
+# The controller itself is stdlib-only. These are the gate tools it runs
+# against the code it builds — see GATES in crucible.py.
+dependencies = ["pytest", "pytest-timeout", "ruff"]
+
+[project.urls]
+Homepage = "https://github.com/charanreddy-27/CRUCIBLE"
+Portfolio = "https://www.charanreddy.dev"
+
+[project.scripts]
+crucible = "crucible:main"
+
+[tool.setuptools]
+py-modules = ["crucible"]
+
+[tool.ruff]
+line-length = 100
+exclude = ["runs", "site"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

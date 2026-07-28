@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About — Charan Reddy Chanda</title>
+<meta name="description" content="Charan Reddy Chanda — AI &amp; Automation Engineer in Bangalore. I build intelligent systems: production LLM pipelines, a Springer-published chest X-ray model, and before that, control code for jet engines.">
+<link rel="canonical" href="https://crucible.charanreddy.dev/about">
+<meta property="og:type" content="profile">
+<meta property="og:site_name" content="Charan Reddy Chanda">
+<meta property="og:title" content="About — Charan Reddy Chanda">
+<meta property="og:description" content="AI &amp; Automation Engineer in Bangalore. I build intelligent systems.">
+<meta property="og:url" content="https://crucible.charanreddy.dev/about">
+<meta property="og:image" content="https://crucible.charanreddy.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="About — Charan Reddy Chanda">
+<meta name="twitter:description" content="AI &amp; Automation Engineer in Bangalore. I build intelligent systems.">
+<meta name="twitter:image" content="https://crucible.charanreddy.dev/og.png">
+<meta name="author" content="Chanda Charan Reddy">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/"><span class="dot" aria-hidden="true"></span>CRUCIBLE</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/project">The build</a>
+      <a href="/about" aria-current="page">About</a>
+      <a href="https://github.com/charanreddy-27/CRUCIBLE">GitHub&nbsp;↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero wrap">
+  <p class="eyebrow">Who built this</p>
+  <h1>I build intelligent systems.</h1>
+  <p class="lead">
+    I'm Charan — an AI &amp; Automation Engineer in Bangalore. I ship production
+    LLM systems: a Springer-published model that reads chest X-rays well enough
+    for a radiologist to take seriously, and document pipelines that run
+    themselves once you stop watching them.
+  </p>
+  <p class="lead">
+    Before any of that, I wrote real-time control code for jet engines at DRDO.
+    That job teaches you something the notebook never will: a millisecond of lag
+    isn't a bug — it's a flameout. I've been suspicious of code that only works
+    when someone's watching ever since.
+  </p>
+  <div class="cta-row">
+    <a class="btn btn-primary" href="https://cal.com/charanreddy-27/30min">Book a call</a>
+    <a class="btn" href="https://www.charanreddy.dev">Portfolio</a>
+    <a class="btn" href="https://github.com/charanreddy-27">GitHub</a>
+    <a class="btn" href="https://www.linkedin.com/in/chandacharanreddy/">LinkedIn</a>
+  </div>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">What I learned building this</p>
+  <h2>Five things CRUCIBLE taught me.</h2>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <span class="k">01 · Judgment</span>
+      <h3>An automated gate is a target, not a truth</h3>
+      <p>
+        Tell a model to make the tests pass and it can write <code>assert True</code>
+        and call it a day. Every objective check I added, I then had to ask: what's
+        the laziest way to satisfy this without doing the work? That question shaped
+        the rubric more than any design doc did.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">02 · Sampling</span>
+      <h3>Best-of-N is weak if the N are the same</h3>
+      <p>
+        My first tournament ran three identical prompts and picked a winner from
+        three nearly identical answers. Real gains only showed up once each
+        candidate got a different emphasis — simplicity, robustness, structure.
+        Diversity is the product; sampling is just the mechanism.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">03 · Testing</span>
+      <h3>You can't test unpredictability — so fake it</h3>
+      <p>
+        The interesting logic here decides which of three model outputs wins. That's
+        untestable against a real model. So the suite ships a fake CLI that speaks
+        the same JSON envelope and hands each candidate deliberately different
+        quality. "Did the right one win?" became an assertion instead of a hope.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">04 · Memory</span>
+      <h3>Fresh context beats accumulated context</h3>
+      <p>
+        Every round starts a brand new session. It feels wasteful right up until you
+        watch a long-running session start defending its earlier decisions. The repo
+        on disk is the state. Nothing else needs to remember anything.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">05 · Human</span>
+      <h3>Knowing when to stop is the whole job</h3>
+      <p>
+        I built this because I was the loop — pasting errors back in, eyeballing
+        diffs, quietly moving the goalposts when I got tired. Writing the stop rules
+        down as code was uncomfortable, because it meant admitting how arbitrary
+        mine had been.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">06 · The door</span>
+      <h3>There's more where this came from</h3>
+      <p>
+        This is one project. The rest of them — the X-rays, the pipelines, and a
+        few jet engines — live at
+        <a href="https://www.charanreddy.dev">charanreddy.dev</a>. Fair warning:
+        the jet engine stories are better than this one.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="contact">
+    <p class="eyebrow">Contact</p>
+    <h2>Have an idea? Let's talk.</h2>
+    <p class="muted" style="margin-bottom:24px">
+      Want to build something — or break something interesting? I'm good company
+      for both. Fastest route is the call link; the form works too.
+    </p>
+
+    <div class="cta-row" style="margin-top:0;margin-bottom:30px">
+      <a class="btn btn-primary" href="https://cal.com/charanreddy-27/30min">Book a call</a>
+      <a class="btn" href="mailto:charanreddychanda@gmail.com">Email</a>
+      <a class="btn" href="https://github.com/charanreddy-27">GitHub</a>
+      <a class="btn" href="https://www.linkedin.com/in/chandacharanreddy/">LinkedIn</a>
+      <a class="btn" href="https://www.charanreddy.dev">Résumé</a>
+    </div>
+
+    <form id="contact-form">
+      <div class="field">
+        <label for="cf-name">Name</label>
+        <input id="cf-name" name="name" type="text" required autocomplete="name">
+      </div>
+      <div class="field">
+        <label for="cf-email">Email</label>
+        <input id="cf-email" name="email" type="email" required autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="cf-msg">Message</label>
+        <textarea id="cf-msg" name="message" required></textarea>
+      </div>
+      <button class="btn btn-primary" type="submit">Send message</button>
+      <p class="form-note">
+        This opens your mail client with the message ready to send — no server
+        sits in the middle, and nothing is stored.
+      </p>
+    </form>
+  </div>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Elsewhere</p>
+  <h2>The rest of it.</h2>
+  <div class="stack-item">
+    <strong>Portfolio</strong>
+    <span><a href="https://www.charanreddy.dev">charanreddy.dev</a> — everything else I've shipped.</span>
+  </div>
+  <div class="stack-item">
+    <strong>GitHub</strong>
+    <span><a href="https://github.com/charanreddy-27">@charanreddy-27</a> — the code, including this.</span>
+  </div>
+  <div class="stack-item">
+    <strong>LinkedIn</strong>
+    <span><a href="https://www.linkedin.com/in/chandacharanreddy/">/in/chandacharanreddy</a> — the professional version.</span>
+  </div>
+  <div class="stack-item">
+    <strong>ORCID</strong>
+    <span><a href="https://orcid.org/0009-0003-2414-6717">0009-0003-2414-6717</a> — the published research.</span>
+  </div>
+  <div class="stack-item">
+    <strong>Email</strong>
+    <span><a href="mailto:charanreddychanda@gmail.com">charanreddychanda@gmail.com</a></span>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-row">
+    <span>Crafted with intent.</span>
+    <span class="sep"></span>
+    <span class="avail">Available for new projects</span>
+    <a href="https://www.charanreddy.dev">Portfolio</a>
+  </div>
+</footer>
+
+<script>
+  // No backend on a static host, so compose a mail draft rather than pretend
+  // to POST somewhere. Honest beats slick.
+  document.getElementById('contact-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = document.getElementById('cf-name').value.trim();
+    var email = document.getElementById('cf-email').value.trim();
+    var msg = document.getElementById('cf-msg').value.trim();
+    var subject = 'Hello from ' + (name || 'the CRUCIBLE site');
+    var body = msg + '\n\n— ' + name + ' (' + email + ')';
+    window.location.href =
+      'mailto:charanreddychanda@gmail.com?subject=' + encodeURIComponent(subject) +
+      '&body=' + encodeURIComponent(body);
+  });
+</script>
+
+</body>
+</html>

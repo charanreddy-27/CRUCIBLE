@@ -30,6 +30,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
 
 # ─────────────────────────────── config ────────────────────────────────────
 
@@ -72,14 +73,18 @@ CANDIDATE_ANGLES = [
 # The builder runs with --dangerously-skip-permissions, which is acceptable
 # ONLY because cwd is a throwaway candidate worktree created by this run. Never
 # point CRUCIBLE at an existing repo. Stricter alternative — swap the flag for:
-# BUILDER_ALLOWED_TOOLS = "Edit,Write,Read,Glob,Grep,Bash(git *),Bash(python *),Bash(pytest *),Bash(ruff *)"
+# BUILDER_ALLOWED_TOOLS = ("Edit,Write,Read,Glob,Grep,"
+#                          "Bash(git *),Bash(python *),Bash(pytest *),Bash(ruff *)")
 
 CRITIC_ALLOWED_TOOLS = "Read,Glob,Grep,Bash(git diff *),Bash(git log *)"
+
+__version__ = "2.0.0"
 
 ROOT = Path(__file__).resolve().parent
 PROMPTS = ROOT / "prompts"
 SCHEMA = ROOT / "schemas" / "critique.schema.json"
-RUNS = ROOT / "runs"
+# Overridable so a test suite can run real loops without writing into the repo.
+RUNS = Path(os.environ.get("CRUCIBLE_RUNS_DIR", ROOT / "runs"))
 
 TRUNK = "trunk"  # the promoted line of history inside workspace/
 GATE_FEEDBACK_LINES = 120  # tail of failure output handed to the next builder
@@ -106,7 +111,7 @@ def log(msg: str = "") -> None:
         print(msg, flush=True)
 
 
-def die(msg: str) -> "NoReturn":  # noqa: F821
+def die(msg: str) -> NoReturn:
     print(f"\ncrucible: {msg}", file=sys.stderr, flush=True)
     sys.exit(1)
 
@@ -627,6 +632,7 @@ def main() -> int:
         "-n", "--candidates", type=int, default=CANDIDATES,
         help=f"builders forked per round (default {CANDIDATES}; 1 = sequential v1 loop)",
     )  # fmt: skip
+    parser.add_argument("--version", action="version", version=f"crucible {__version__}")
     args = parser.parse_args()
 
     if args.candidates < 1:

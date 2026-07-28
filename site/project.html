@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About the build — CRUCIBLE — Charan Reddy Chanda</title>
+<meta name="description" content="Why CRUCIBLE exists, the month it nearly died, and how you test a system whose entire job is being unpredictable.">
+<link rel="canonical" href="https://crucible.charanreddy.dev/project">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Charan Reddy Chanda">
+<meta property="og:title" content="About the build — CRUCIBLE">
+<meta property="og:description" content="Why it exists, the month it nearly died, and how you test a system whose entire job is being unpredictable.">
+<meta property="og:url" content="https://crucible.charanreddy.dev/project">
+<meta property="og:image" content="https://crucible.charanreddy.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="About the build — CRUCIBLE">
+<meta name="twitter:description" content="Why it exists, the month it nearly died, and how you test a system whose entire job is being unpredictable.">
+<meta name="twitter:image" content="https://crucible.charanreddy.dev/og.png">
+<meta name="author" content="Chanda Charan Reddy">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/"><span class="dot" aria-hidden="true"></span>CRUCIBLE</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/project" aria-current="page">The build</a>
+      <a href="/about">About</a>
+      <a href="https://github.com/charanreddy-27/CRUCIBLE">GitHub&nbsp;↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero wrap">
+  <p class="eyebrow">About the build</p>
+  <h1>I got tired of being the loop.</h1>
+  <p class="lead">
+    You know the rhythm. Ask for a feature. Run it. Paste the traceback back in.
+    Run it again. Squint at the diff. Decide — on no particular basis — that
+    this is probably fine. Then discover two versions ago was better and you
+    didn't keep it.
+  </p>
+  <p class="lead">
+    I was doing that by hand, badly, several times a week. The model wasn't the
+    bottleneck. <strong>I was</strong> — specifically the part of me deciding
+    when something was done, which turned out to correlate mostly with how tired
+    I was.
+  </p>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">The why</p>
+  <h2>Self-review is the part that doesn't work.</h2>
+  <p>
+    You can already ask a model to critique its own output. It will. It'll even
+    sound rigorous. But it's grading in the same context that produced the work,
+    which makes it agreeable in exactly the way a reviewer must not be. Ask
+    twice and it starts defending itself.
+  </p>
+  <p>
+    So the design question wasn't "how do I loop an LLM." It was:
+    <em>which decisions must the model never make?</em> Three of them, it turned
+    out. Whether the code runs — that's tests and lint, deterministic, no opinion
+    involved. Whether the code is any good — that needs a reviewer with no memory
+    of writing it. And whether to stop — that's arithmetic, and it belongs in
+    Python where I can read it.
+  </p>
+  <p>
+    What's left for the model is the part it's actually good at: writing the
+    thing.
+  </p>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Timeline</p>
+  <h2>Six months, one near-death.</h2>
+  <ol class="timeline">
+    <li>
+      <span class="when">February 2026</span>
+      <h3>The itch</h3>
+      <p>
+        Noticed I'd rebuilt the same manual loop three times in a week for three
+        different projects. Wrote maybe forty lines of shell to automate it,
+        which worked exactly until the first failing test.
+      </p>
+    </li>
+    <li>
+      <span class="when">March 2026</span>
+      <h3>Spec before code</h3>
+      <p>
+        Wrote the whole design down first — invariants, stop rules, failure
+        table, the lot. Partly discipline, mostly because I'd already learned
+        that "I'll figure out the loop as I go" is how you end up with a loop
+        that never exits.
+      </p>
+    </li>
+    <li>
+      <span class="when">April 2026</span>
+      <h3>v1: the happy path</h3>
+      <p>
+        One builder, one critic, gates in between, five rounds max. It worked on
+        the first real idea I gave it, which should have made me suspicious
+        sooner than it did.
+      </p>
+    </li>
+    <li class="hard">
+      <span class="when">May 2026</span>
+      <h3>The month the gates lied</h3>
+      <p>
+        Watched a round fail on an assertion whose source code said something
+        different from the error message. pytest caches rewritten assertions
+        keyed on file mtime and size — and a builder rewriting a same-size file
+        inside one second gets graded on stale bytecode. The one component I'd
+        called "deterministic ground truth" had been quietly wrong. That was a
+        bad evening. It's a one-line fix and a permanent lesson: the thing you
+        trust most is the thing you should test hardest.
+      </p>
+    </li>
+    <li>
+      <span class="when">June 2026</span>
+      <h3>The tournament</h3>
+      <p>
+        One sequential guess per round became N candidates racing in isolated
+        git worktrees. First attempt ran three identical prompts and picked
+        between three identical answers — technically best-of-N, practically
+        pointless. Giving each candidate a different emphasis is what made it
+        work.
+      </p>
+    </li>
+    <li>
+      <span class="when">July 2026</span>
+      <h3>Testing the untestable, then docs</h3>
+      <p>
+        Built a fake Claude CLI that speaks the real JSON envelope and hands each
+        candidate deliberately different quality, so winner selection could be
+        asserted rather than believed. Twenty-four tests, CI, and the writing you
+        are currently reading.
+      </p>
+    </li>
+  </ol>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Interesting problems</p>
+  <h2>The parts that were actually hard.</h2>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <span class="k">Merge conflicts</span>
+      <h3>Solved by making them impossible</h3>
+      <p>
+        Three candidates editing the same files, one has to win. Rather than
+        merging, every candidate branches from trunk's current commit and trunk
+        doesn't move during the round — so the winner is always a fast-forward.
+        No conflict can exist. A test asserts trunk's history stays a straight
+        line, because a tournament that silently merged everyone would still
+        look green.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">Concurrency</span>
+      <h3>Parallel builds, serial git</h3>
+      <p>
+        Worktrees keep separate indexes but share one object store and one set of
+        refs. So the builds run in parallel and the controller's own git calls
+        take a lock. The long part is parallel; the millisecond part is safe.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">Cost</span>
+      <h3>Don't review broken code</h3>
+      <p>
+        Critiquing a build that fails its own tests wastes a call on feedback the
+        gates already gave you for free. Red gates skip the critic entirely and
+        the failure output becomes the next round's brief. With N candidates that
+        saving multiplies.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">Scoring</span>
+      <h3>Minimum, not average</h3>
+      <p>
+        A round scores the lowest of its five dimensions. Averaging lets gorgeous
+        code with hollow tests coast to a pass — and hollow tests were the exact
+        failure mode I was most worried about. A chain is as strong as its
+        weakest link.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">Failure</span>
+      <h3>N&gt;1 bought fault tolerance free</h3>
+      <p>
+        In v1 a single builder error killed the run. Now a dead candidate is just
+        dropped and the round continues on whoever survived. Only a round where
+        every candidate dies ends things. That wasn't the goal of the tournament
+        — it fell out of it.
+      </p>
+    </div>
+    <div class="card">
+      <span class="k">Honesty</span>
+      <h3>Never point at a ref that isn't there</h3>
+      <p>
+        A run that died inside the builder never reached its commit, so the
+        <code>best</code> tag had nothing to point at — and the report cheerfully
+        told you to check it out anyway. Now termination verifies the ref exists
+        and says plainly when there's nothing to see.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Tech stack</p>
+  <h2>And why each one.</h2>
+  <div class="stack-item">
+    <strong>Python 3.11</strong>
+    <span>Stdlib only, no dependencies. The component deciding when to stop should be the most boring code in the repo.</span>
+  </div>
+  <div class="stack-item">
+    <strong>Claude Code headless</strong>
+    <span><code>claude -p</code> gives a real agent with real tools behind a JSON envelope reporting cost, turns and errors — a subprocess I can supervise instead of an API I'd have to build an agent on top of.</span>
+  </div>
+  <div class="stack-item">
+    <strong>--json-schema</strong>
+    <span>The critic's verdict is schema-enforced at the CLI, so there's no regex, no parse-retry loop, and no round lost to malformed JSON.</span>
+  </div>
+  <div class="stack-item">
+    <strong>git worktrees</strong>
+    <span>Real isolation without copying the repo N times — shared object store, separate working trees. Candidates can't see or clobber each other, and losers stay inspectable as branches.</span>
+  </div>
+  <div class="stack-item">
+    <strong>pytest + ruff</strong>
+    <span>The gates. Deterministic, boring, and impossible to sweet-talk. Run by the controller, never by a model.</span>
+  </div>
+  <div class="stack-item">
+    <strong>ThreadPoolExecutor</strong>
+    <span>The work is subprocess-bound, so threads are plenty. Processes would have bought nothing but complexity.</span>
+  </div>
+  <div class="stack-item">
+    <strong>GitHub Actions</strong>
+    <span>Lint and the full suite on 3.11–3.13. The end-to-end tests build real worktrees in CI, so the concurrency isn't only tested on my laptop.</span>
+  </div>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Links</p>
+  <h2>See it for yourself.</h2>
+  <div class="stack-item">
+    <strong>Repository</strong>
+    <span><a href="https://github.com/charanreddy-27/CRUCIBLE">github.com/charanreddy-27/CRUCIBLE</a></span>
+  </div>
+  <div class="stack-item">
+    <strong>Deep dive</strong>
+    <span><a href="https://github.com/charanreddy-27/CRUCIBLE/blob/main/docs/PROJECT_DEEP_DIVE.md">Architecture, data flow and tradeoffs</a></span>
+  </div>
+  <div class="stack-item">
+    <strong>LinkedIn post</strong>
+    <span class="muted">Not published yet — link goes here once it is.</span>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="contact">
+    <h2>Want to build something — or break something interesting?</h2>
+    <p class="muted" style="margin-bottom:22px">
+      I like both. If you've got a problem that looks like magic in a notebook
+      and falls apart in production, that's roughly my favourite genre.
+    </p>
+    <div class="cta-row" style="margin-top:0">
+      <a class="btn btn-primary" href="https://cal.com/charanreddy-27/30min">Book a call</a>
+      <a class="btn" href="/about">More about me</a>
+      <a class="btn" href="mailto:charanreddychanda@gmail.com">Email</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-row">
+    <span>Crafted with intent.</span>
+    <span class="sep"></span>
+    <span class="avail">Available for new projects</span>
+    <a href="https://www.charanreddy.dev">Portfolio</a>
+  </div>
+</footer>
+
+</body>
+</html>
