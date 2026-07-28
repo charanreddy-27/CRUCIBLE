@@ -4,6 +4,12 @@
 
 **Handoff note (for the implementing Claude Code session):** Build exactly what is specified here, in the phase order in §10. Do not add a web UI, parallel candidates, or resumable runs — those are explicitly out of scope (§11). The deliverable is a single-file controller plus prompt/schema assets.
 
+> **Status:** this document is the v1 design record and is kept as written.
+> Best-of-N parallel candidates — §11's "strong v2 idea" — has since been built,
+> so the parallel-candidates non-goal no longer holds. The web UI and resumable
+> runs remain out of scope. See [`README.md`](README.md) for the tournament
+> round, which supersedes §4.2 and §5 where they differ.
+
 ---
 
 ## 1. How it works

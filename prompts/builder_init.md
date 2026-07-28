@@ -3,7 +3,7 @@ current directory (already a git repo).
 
 ## The idea
 {IDEA}
-
+{ANGLE}
 ## Hard requirements
 1. Working code, no placeholders, no TODOs, no stubbed functions.
 2. pytest tests that assert real behavior (not just "imports work").
