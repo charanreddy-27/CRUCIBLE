@@ -68,10 +68,31 @@ def identity(cwd: pathlib.Path) -> tuple[int, int]:
     return (int(rnd.group(1)) if rnd else 1, int(cid.group(1)) if cid else 1)
 
 
+def check_contract(argv: list[str]) -> bool:
+    """Enforce the real CLI's contract, so the fake can't give false confidence.
+
+    --json-schema takes the schema *inline*, not a path to it. A path fails
+    against the real CLI with "not valid JSON: Unrecognized token '/'", which a
+    fake that merely looks for the flag would happily accept — and every real
+    critic call would then fail in production. So the fake parses it too.
+    """
+    if "--json-schema" not in argv:
+        return False
+    value = argv[argv.index("--json-schema") + 1]
+    try:
+        json.loads(value)
+    except json.JSONDecodeError:
+        print(
+            f"Error: --json-schema is not valid JSON: {value[:40]}", file=sys.stderr
+        )
+        sys.exit(1)
+    return True
+
+
 def main() -> None:
     cwd = pathlib.Path.cwd()
     rnd, cid = identity(cwd)
-    is_critic = "--json-schema" in sys.argv[1:]
+    is_critic = check_contract(sys.argv[1:])
 
     if is_critic:
         # Higher candidate id = better work, so c3 should win a fair tournament.

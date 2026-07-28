@@ -70,15 +70,25 @@ CANDIDATE_ANGLES = [
     "stated requirement is quietly dropped or half-implemented.",
 ]
 
-# The builder runs with --dangerously-skip-permissions, which is acceptable
-# ONLY because cwd is a throwaway candidate worktree created by this run. Never
-# point CRUCIBLE at an existing repo. Stricter alternative — swap the flag for:
-# BUILDER_ALLOWED_TOOLS = ("Edit,Write,Read,Glob,Grep,"
-#                          "Bash(git *),Bash(python *),Bash(pytest *),Bash(ruff *)")
+# By default the builder runs with --dangerously-skip-permissions, which is
+# acceptable ONLY because cwd is a throwaway candidate worktree created by this
+# run. Never point CRUCIBLE at an existing repo.
+#
+# Set BUILDER_ALLOWED_TOOLS to a whitelist to use scoped permissions instead.
+# That flag is also *required* when running as root: the CLI refuses
+# --dangerously-skip-permissions under root/sudo, so a containerised or CI run
+# has to take this path. Preflight enforces it rather than letting every builder
+# invocation fail with an unparseable envelope.
+# Settable here or via CRUCIBLE_BUILDER_ALLOWED_TOOLS, so a container or CI run
+# can take the scoped path without editing source.
+BUILDER_ALLOWED_TOOLS: str | None = os.environ.get("CRUCIBLE_BUILDER_ALLOWED_TOOLS") or None
+BUILDER_ALLOWED_TOOLS_SUGGESTION = (
+    "Edit,Write,Read,Glob,Grep,Bash(git *),Bash(python *),Bash(pytest *),Bash(ruff *)"
+)
 
 CRITIC_ALLOWED_TOOLS = "Read,Glob,Grep,Bash(git diff *),Bash(git log *)"
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 ROOT = Path(__file__).resolve().parent
 PROMPTS = ROOT / "prompts"
@@ -204,6 +214,18 @@ def preflight() -> None:
 
     if shutil.which("claude") is None:
         missing.append("`claude` (Claude Code CLI) — https://code.claude.com/docs/en/headless")
+
+    # The CLI refuses --dangerously-skip-permissions under root/sudo. Without
+    # this check every builder invocation dies on a non-JSON error, burns its
+    # retry, and reports "unparseable JSON envelope" — true, but useless.
+    if not BUILDER_ALLOWED_TOOLS and hasattr(os, "geteuid") and os.geteuid() == 0:
+        missing.append(
+            "running as root, which the CLI forbids with "
+            "--dangerously-skip-permissions.\n      Either run as a non-root user, "
+            "or set BUILDER_ALLOWED_TOOLS in crucible.py to use scoped\n      "
+            f'permissions instead, e.g.\n        BUILDER_ALLOWED_TOOLS = '
+            f'"{BUILDER_ALLOWED_TOOLS_SUGGESTION}"'
+        )
     if shutil.which("git") is None:
         missing.append("`git`")
     else:
@@ -268,8 +290,11 @@ def invoke_claude(
     for attempt in (1, 2):
         try:
             proc = subprocess.run(
-                argv, cwd=cwd, capture_output=True, text=True, timeout=timeout
-            )
+                argv, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+                # Without this the CLI waits 3s for stdin on every invocation —
+                # dead time multiplied by candidates and rounds.
+                stdin=subprocess.DEVNULL,
+            )  # fmt: skip
         except subprocess.TimeoutExpired:
             log(f"  ! {label}: timed out after {timeout}s (attempt {attempt})")
             last_raw = f"<timeout after {timeout}s>"
@@ -311,8 +336,11 @@ def invoke_builder(prompt: str, cwd: Path, out_dir: Path, label: str):
         "--output-format", "json",
         "--model", BUILDER_MODEL,
         "--max-turns", str(BUILDER_MAX_TURNS),
-        "--dangerously-skip-permissions",
     ]  # fmt: skip
+    if BUILDER_ALLOWED_TOOLS:
+        argv += ["--allowedTools", BUILDER_ALLOWED_TOOLS]
+    else:
+        argv.append("--dangerously-skip-permissions")
     return invoke_claude(argv, cwd, BUILDER_TIMEOUT_S, label, out_dir / "builder.json")
 
 
@@ -320,7 +348,9 @@ def invoke_critic(prompt: str, cwd: Path, out_dir: Path, label: str):
     argv = [
         "claude", "-p", prompt,
         "--output-format", "json",
-        "--json-schema", str(SCHEMA),  # absolute: cwd has no schemas/ dir
+        # --json-schema takes the schema *inline*, not a path to it. Passing a
+        # path fails with "not valid JSON: Unrecognized token '/'".
+        "--json-schema", SCHEMA.read_text(encoding="utf-8"),
         "--model", CRITIC_MODEL,
         "--max-turns", str(CRITIC_MAX_TURNS),
         "--allowedTools", CRITIC_ALLOWED_TOOLS,
@@ -476,50 +506,57 @@ def run_round(
         cands.append(cand)
 
     log(f"  forking {n_candidates} candidate(s) from {base[:8]}…")
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:
-        list(pool.map(lambda c: build_candidate(c, n, idea, feedback, source), cands))
+    winner: Candidate | None = None
 
-    alive = [c for c in cands if not c.dead]
-    if not alive:
-        return None, cands, "builder_error"
-
-    survivors = [c for c in alive if c.gates_ok]
-    if survivors:
-        log(f"  critiquing {len(survivors)} survivor(s)…")
+    # Whatever happens below — including a round where every candidate dies —
+    # the forensics get written and the worktrees get reclaimed. An aborted
+    # round is the one you most want a record of.
+    try:
         with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:
-            list(pool.map(lambda c: critique_candidate(c, idea), survivors))
-        scored = [c for c in survivors if c.critique]
-        if not scored:
-            return None, cands, "critic_error"
-        # Highest weakest-dimension score; ties go to the lower candidate id.
-        winner = max(scored, key=lambda c: (c.overall, -c.cid))
-    else:
-        # Nobody is green. Carry forward the least-broken attempt so the next
-        # round revises the most promising line rather than a random one.
-        winner = max(alive, key=lambda c: (c.gates_passed, -c.cid))
-        log(f"  no candidate passed the gates — carrying {winner.label} forward")
+            list(pool.map(lambda c: build_candidate(c, n, idea, feedback, source), cands))
 
-    # Promote: trunk has not moved since the fork, so this fast-forwards.
-    ff = git(["merge", "--ff-only", winner.branch], workspace, check=False)
-    if ff.returncode != 0:
-        log("  ! fast-forward failed — resetting trunk to the winner")
-        git(["reset", "--hard", winner.branch], workspace)
-    git(["tag", "-f", f"round-{n}"], workspace, check=False)
+        alive = [c for c in cands if not c.dead]
+        if not alive:
+            return None, cands, "builder_error"
 
-    (round_dir / "selection.json").write_text(
-        json.dumps(
-            {"round": n, "base": base[:8], "winner": winner.cid,
-             "candidates": [c.summary() for c in cands]},
-            indent=2,
-        ),
-        encoding="utf-8",
-    )  # fmt: skip
+        survivors = [c for c in alive if c.gates_ok]
+        if survivors:
+            log(f"  critiquing {len(survivors)} survivor(s)…")
+            with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:
+                list(pool.map(lambda c: critique_candidate(c, idea), survivors))
+            scored = [c for c in survivors if c.critique]
+            if not scored:
+                return None, cands, "critic_error"
+            # Highest weakest-dimension score; ties go to the lower candidate id.
+            winner = max(scored, key=lambda c: (c.overall, -c.cid))
+        else:
+            # Nobody is green. Carry forward the least-broken attempt so the next
+            # round revises the most promising line rather than a random one.
+            winner = max(alive, key=lambda c: (c.gates_passed, -c.cid))
+            log(f"  no candidate passed the gates — carrying {winner.label} forward")
 
-    # Branches persist for forensics; the working trees are just disk.
-    for c in cands:
-        git(["worktree", "remove", "--force", str(c.path)], workspace, check=False)
+        # Promote: trunk has not moved since the fork, so this fast-forwards.
+        ff = git(["merge", "--ff-only", winner.branch], workspace, check=False)
+        if ff.returncode != 0:
+            log("  ! fast-forward failed — resetting trunk to the winner")
+            git(["reset", "--hard", winner.branch], workspace)
+        git(["tag", "-f", f"round-{n}"], workspace, check=False)
 
-    return winner, cands, ""
+        return winner, cands, ""
+
+    finally:
+        (round_dir / "selection.json").write_text(
+            json.dumps(
+                {"round": n, "base": base[:8],
+                 "winner": winner.cid if winner else None,
+                 "candidates": [c.summary() for c in cands]},
+                indent=2,
+            ),
+            encoding="utf-8",
+        )  # fmt: skip
+        # Branches persist for forensics; the working trees are just disk.
+        for c in cands:
+            git(["worktree", "remove", "--force", str(c.path)], workspace, check=False)
 
 
 # ─────────────────────────── state and report ──────────────────────────────

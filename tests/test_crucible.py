@@ -93,6 +93,25 @@ def test_angles_cover_the_default_candidate_count():
     assert len(crucible.CANDIDATE_ANGLES) >= crucible.CANDIDATES
 
 
+def test_critic_schema_is_sent_inline_not_as_a_path():
+    """The real CLI takes --json-schema inline; a path fails every critic call.
+
+    This shipped as a live bug: the schema was passed as a filesystem path, the
+    stub only checked the flag was present, and the tests were green while the
+    critic could never have worked against the real CLI.
+    """
+    schema_text = crucible.SCHEMA.read_text(encoding="utf-8")
+    parsed = json.loads(schema_text)  # must itself be valid JSON
+    assert parsed["type"] == "object"
+    assert set(parsed["required"]) == {"scores", "must_fix", "summary", "verdict"}
+
+    src = (ROOT / "crucible.py").read_text(encoding="utf-8")
+    start = src.index("def invoke_critic")
+    invocation = src[start : src.index("# ─", start)]
+    assert "SCHEMA.read_text" in invocation, "schema must be inlined, not passed as a path"
+    assert "str(SCHEMA)" not in invocation, "passing the schema path breaks every critic call"
+
+
 # ─────────────────────────── end-to-end harness ────────────────────────────
 
 
@@ -126,6 +145,9 @@ def run_crucible(fake_claude, tmp_path, scenario, idea, *extra):
         "PATH": f"{fake_claude}{os.pathsep}{os.environ['PATH']}",
         "CRUCIBLE_FAKE_SCENARIO": scenario,
         "CRUCIBLE_RUNS_DIR": str(tmp_path / "runs"),
+        # CI and containers often run as root, where the CLI forbids
+        # --dangerously-skip-permissions. Take the scoped path instead.
+        "CRUCIBLE_BUILDER_ALLOWED_TOOLS": "Edit,Write,Read,Glob,Grep,Bash(git *)",
     }
     proc = subprocess.run(
         [sys.executable, str(ROOT / "crucible.py"), idea, *extra],
@@ -211,6 +233,26 @@ def test_all_builders_dead_terminates_cleanly(fake_claude, tmp_path):
 
 
 @requires_tools
+def test_aborted_round_still_cleans_up_and_records(fake_claude, tmp_path):
+    """A round where every candidate dies is the one you most want a record of.
+
+    It is also the easiest path to leak worktrees on, because it returns early.
+    """
+    _, run_dir, _ = run_crucible(fake_claude, tmp_path, "alldie", "cleanup test")
+
+    # No worktree directories left on disk...
+    assert not list((run_dir / "candidates").rglob("cand_*/.git"))
+    # ...and none still registered with git (only the main workspace remains).
+    assert len(git_out(run_dir / "workspace", "worktree", "list").splitlines()) == 1
+
+    # Forensics for the failed round exist despite the early return.
+    sel = json.loads((run_dir / "rounds" / "round_1" / "selection.json").read_text())
+    assert sel["winner"] is None
+    assert len(sel["candidates"]) == 3
+    assert all(c["status"] == "builder error" for c in sel["candidates"])
+
+
+@requires_tools
 def test_no_green_candidate_carries_least_broken_forward(fake_claude, tmp_path):
     state, run_dir, _ = run_crucible(fake_claude, tmp_path, "allred", "all red test")
     assert state["stop_reason"] == "max_rounds"
@@ -271,7 +313,27 @@ def test_empty_idea_is_rejected(tmp_path):
     empty.write_text("   \n")
     proc = subprocess.run(
         [sys.executable, str(ROOT / "crucible.py"), str(empty)],
-        capture_output=True, text=True, env={**os.environ, "CRUCIBLE_RUNS_DIR": str(tmp_path)},
+        capture_output=True, text=True,
+        env={**os.environ, "CRUCIBLE_RUNS_DIR": str(tmp_path),
+             "CRUCIBLE_BUILDER_ALLOWED_TOOLS": "Read"},
     )  # fmt: skip
     assert proc.returncode == 1
     assert "empty" in proc.stderr
+
+
+def test_root_without_a_whitelist_is_refused_up_front(tmp_path):
+    """The CLI forbids --dangerously-skip-permissions as root.
+
+    Without this guard every builder invocation dies on a non-JSON error, burns
+    its retry, and reports "unparseable JSON envelope" — true, but useless.
+    """
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        pytest.skip("only meaningful when running as root")
+    env = {k: v for k, v in os.environ.items() if k != "CRUCIBLE_BUILDER_ALLOWED_TOOLS"}
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "crucible.py"), "x"],
+        capture_output=True, text=True,
+        env={**env, "CRUCIBLE_RUNS_DIR": str(tmp_path)},
+    )  # fmt: skip
+    assert proc.returncode == 1
+    assert "root" in proc.stderr and "BUILDER_ALLOWED_TOOLS" in proc.stderr

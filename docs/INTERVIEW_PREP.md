@@ -117,7 +117,37 @@ rather than one that's handled. The test matters as much as the design: it
 catches the regression where someone "helpfully" changes `--ff-only` to a plain
 merge.
 
-### Story 3 — Best-of-N that actually bought something
+### Story 3 — The test suite that lied to me
+
+**Situation.** I'd built a fake CLI so I could test orchestration logic that
+operates on model output. Twenty-four tests, all green, including end-to-end runs
+with real git worktrees.
+
+**Task.** Before claiming it worked, I wanted one real invocation against the
+actual CLI — specifically to confirm the structured-output contract, the one
+thing a fake can't prove.
+
+**Action.** It failed immediately:
+`--json-schema is not valid JSON: Unrecognized token '/'`. The flag takes the
+schema **inline**; I was passing a filesystem path. Every critic call in every
+real run would have failed — and my suite was green, because the fake only
+checked the flag was *present* and never looked at its value. I fixed the
+invocation, then fixed the deeper problem: the fake now parses that argument as
+JSON and exits non-zero if it can't, exactly like the real thing. I verified the
+guard by reintroducing the bug and confirming the suite goes red.
+
+**Result.** The critic contract is verified end-to-end against the real CLI now.
+The lasting lesson is about test doubles: **make them enforce the contract, not
+just impersonate the interface.** A fake that accepts more than the real thing
+turns a loud production failure into a silent green build — which is worse than
+having no test, because it manufactures confidence.
+
+> **Why this story works:** it's a bug *you* found in *your own* verification,
+> and the fix is a principle rather than a patch. It also demonstrates you don't
+> confuse "tests pass" with "it works" — which is exactly the instinct the whole
+> project is about.
+
+### Story 4 — Best-of-N that actually bought something
 
 **Situation.** The first tournament implementation ran N identical prompts in
 parallel and picked a winner.
@@ -186,14 +216,27 @@ continues on the survivors.
 > PASS harder to reach, which is the point.
 
 **"How do you know any of this works?"**
-> Twenty-four tests, and the end-to-end ones run real loops with only the model
-> faked. I'll be straight about the limit: the fake CLI reproduces the documented
-> envelope, so the orchestration is genuinely verified, but the full live
-> acceptance run against the real CLI is still outstanding. Every claim I've made
-> is scoped to what I've actually observed.
+> Twenty-six tests, and the end-to-end ones run real loops — real worktrees, real
+> gates — with only the model faked. Separately I verified the critic contract
+> against the real CLI: envelope shape, `--json-schema` producing conforming
+> `structured_output`, read-only tool scoping. That's also how I found a bug the
+> green test suite was hiding, which is a story in itself.
+>
+> The honest boundary: a complete multi-round tournament driven by real builders
+> is still untried, and the reason is cost — every invocation carries about
+> twenty cents of cache creation before it does any work.
 
-> **Note:** that last answer is a strength, not a weakness — interviewers
-> notice people who state the boundary of their evidence. Don't dress it up.
+> **Note:** stating that boundary is a strength, not a weakness. Interviewers
+> notice people who know where their evidence stops. Don't dress it up.
+
+**"What did the real critic actually say?"**
+> Good question to invite, because the answer sells the design. I pointed it at a
+> deliberately weak module — a `divide` function with one test,
+> `assert divide(6, 3) == 2`. It scored test_quality 2 out of 10 and explained
+> that the assertion is satisfied by `return 2`, by integer division, and by
+> `return 6 / b` — so it cannot distinguish a correct implementation from three
+> wrong ones. That's the anti-gaming rubric doing precisely what it was built
+> for, on the first real run.
 
 **"What does it cost to run?"**
 > It scales with N: roughly 3× the builder cost per round at three candidates,
@@ -215,7 +258,8 @@ continues on the survivors.
 - **Adaptive N** — sample wide on round 1 where variance is highest, narrow as it converges. Same budget, better allocation.
 - **A critic ensemble** for close calls. One opinion currently decides a whole round, and that's the thinnest part of the design.
 - **Cross-pollination** — the losing candidates often solve *part* of the problem better. Right now that work is discarded; feeding it to the next round's builders is the obvious next lever.
-- **The live acceptance run.** Verified against a fake CLI is not verified against production. It's the honest gap.
+- **The full live acceptance run.** The critic contract is verified against the real CLI and the orchestration against the fake; a complete multi-round tournament with real builders is the remaining gap, and cost is why.
+- **A hard per-call budget** using the CLI's `--max-budget-usd`, which would make the cost cap a limit rather than an after-the-fact check.
 - **Resumability**, which I deliberately skipped — `state.json` makes a crashed run inspectable but not restartable. Reconciling on-disk git state with recorded state is real complexity for a rare case, and I'd rather say that than pretend it was an oversight.
 
 ---

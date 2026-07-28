@@ -157,6 +157,21 @@ crucible --version
 > `crucible.py` into site-packages while leaving `prompts/` and `schemas/`
 > behind, and the preflight would fail. This isn't published to PyPI.
 
+### Running in a container or as root
+
+The CLI refuses `--dangerously-skip-permissions` under root/sudo, which is how
+most containers run. Take the scoped path instead:
+
+```bash
+export CRUCIBLE_BUILDER_ALLOWED_TOOLS="Edit,Write,Read,Glob,Grep,Bash(git *),Bash(python *),Bash(pytest *),Bash(ruff *)"
+python crucible.py IDEA.md
+```
+
+Preflight refuses to start without it when running as root, and prints that
+line. It's a hard failure on purpose: the alternative is every builder
+invocation dying on a non-JSON error and reporting "unparseable JSON envelope",
+which is accurate and completely unhelpful.
+
 ### CI
 
 `.github/workflows/ci.yml` runs ruff and the full suite on Python 3.11–3.13 for
@@ -171,7 +186,7 @@ global git identity — worth knowing if you fork it.
 - [ ] **Point DNS** — add the `crucible` CNAME at your DNS provider, or update the absolute URLs if you pick another hostname.
 - [ ] **Verify the social card** — paste the live URL into [opengraph.xyz](https://www.opengraph.xyz) and confirm `og.png` renders. LinkedIn caches aggressively; use their [Post Inspector](https://www.linkedin.com/post-inspector/) to force a refresh.
 - [ ] **Record a real run** and replace the README hero image.
-- [ ] **Run the live acceptance run** — the whole suite is verified against a fake CLI. Do one real run against the real `claude` and raise `MAX_COST_USD` first, since three candidates burn roughly 3× per round.
+- [ ] **Run the full live acceptance run.** The critic contract is already verified against the real CLI; what's untried is a complete multi-round tournament with real builders. Raise `MAX_COST_USD` first — each invocation carries roughly $0.20 of cache creation before it does any work, so `-n 3` over several rounds adds up fast. Start with `-n 1` to sanity-check the builder path cheaply.
 - [ ] **Confirm your email** — the docs and site use `charanreddychanda@gmail.com`. Your git identity here is `charanreddychanda27@gmail.com`. Pick one and make it consistent.
 - [ ] **Point the Résumé button** at a real file — it currently links to your portfolio homepage (`site/about.html`, contact card).
 - [ ] **Post on LinkedIn**, then drop the URL into `site/project.html` (the "LinkedIn post" row, currently a placeholder) and any README reference.

@@ -294,6 +294,31 @@ tournament, total gate failure, partial builder failure, total builder failure,
 and late convergence (which proves `best` pins the *first* round to reach the top
 score, not the last).
 
+### When the fake lied
+
+A fake is only as good as the contract it enforces, and mine had a hole.
+
+`--json-schema` takes the schema **inline**. I was passing a filesystem path.
+Against the real CLI that fails instantly —
+`Error: --json-schema is not valid JSON: Unrecognized token '/'` — which means
+every critic call in every real run would have failed. The suite was green the
+whole time, because the fake only checked that the flag was *present* and never
+looked at its value.
+
+Two things came out of that:
+
+1. The fake now parses the schema argument as JSON and exits non-zero if it
+   can't, exactly like the real CLI. A test additionally asserts the invocation
+   inlines the schema rather than passing a path.
+2. A rule I'd now apply to any test double: **make it enforce the contract, not
+   merely impersonate the interface.** A fake that accepts more than the real
+   thing converts a loud production failure into a silent green build — strictly
+   worse than having no test at all, because it manufactures confidence.
+
+Running it for real also surfaced that the CLI waits 3 seconds for stdin on
+every invocation unless you redirect it. Multiplied by candidates and rounds,
+that was pure dead time; the controller now passes `stdin=DEVNULL`.
+
 ## 10. Tradeoffs I'd defend
 
 **Single file.** 830 lines is at the edge of comfortable, but the controller is
@@ -319,4 +344,5 @@ wide.
 - **Adaptive N** — sample wide on round 1 where variance is highest, then narrow.
 - **A critic ensemble** for close calls, since one opinion decides a whole round.
 - **Cross-pollination** — feed the winner the losers' best ideas instead of discarding them.
-- **A real acceptance run** — every claim here is verified against the fake CLI. The live end-to-end run is the outstanding gap, and it should stay stated plainly until it's done.
+- **A hard per-call budget.** The CLI exposes `--max-budget-usd`, which would turn the cost cap from a check that happens *after* a round into a limit that cannot be exceeded. The cross-cutting part is that candidates run in parallel, so "remaining budget" needs a lock to be meaningful.
+- **The full live acceptance run.** The critic contract is now verified against the real CLI — envelope shape, `--json-schema` → `structured_output`, `--allowedTools` — and the orchestration is verified against the fake. What's still untried is a complete multi-round tournament driven by real builders. Cost is the reason: each invocation carries roughly $0.20 of cache creation before it does any work, so a wide run is genuinely expensive.

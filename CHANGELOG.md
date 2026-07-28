@@ -3,6 +3,46 @@
 Notable changes to CRUCIBLE. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] — 2026-07
+
+Found by running the real CLI for the first time instead of only the fake.
+
+### Fixed
+- **The critic could never have worked.** `--json-schema` takes the schema
+  *inline*; it was being passed a filesystem path, which the real CLI rejects
+  with `not valid JSON: Unrecognized token '/'`. Every critic call in every real
+  run would have failed. The test suite was green throughout, because the fake
+  CLI only checked the flag was present and never parsed its value.
+- **The fake now enforces the contract** rather than impersonating the
+  interface: it parses the schema argument as JSON and exits non-zero if it
+  can't, exactly like the real CLI. A test additionally asserts the invocation
+  inlines the schema, and the guard was verified by reintroducing the bug.
+- **Every invocation stalled 3 seconds** waiting for stdin. The controller now
+  passes `stdin=DEVNULL` — dead time that was multiplied by candidates and rounds.
+- **Aborted rounds leaked worktrees.** A round where every candidate died
+  returned before cleanup, leaving worktrees on disk and registered with git,
+  and never writing `selection.json` — losing the forensics for precisely the
+  round you most want them. Both now run in a `finally`.
+- **Site linked to `blob/main/`** on a repo that has no `main` branch yet;
+  switched to `blob/HEAD/`, which resolves to whatever the default branch is.
+
+### Added
+- `BUILDER_ALLOWED_TOOLS` (and `CRUCIBLE_BUILDER_ALLOWED_TOOLS`) promotes the
+  previously commented-out scoped-permissions option into a working one. The
+  CLI refuses `--dangerously-skip-permissions` under root/sudo, so containers
+  and CI need it; preflight now detects root and explains the fix instead of
+  letting every builder invocation fail with an unparseable envelope.
+
+### Verified
+- `--max-turns` overflow behaves as the spec assumed: exit 1, `is_error: true`,
+  `subtype: error_max_turns`. Worth pinning down because the flag is accepted
+  but undocumented in `claude -p --help`.
+- The critic contract now runs against the real CLI end to end: envelope keys,
+  `--json-schema` producing conforming `structured_output`, and read-only tool
+  scoping. On its first real invocation the rubric scored a tautological test
+  2/10 and explained that `assert divide(6, 3) == 2` is satisfied by `return 2`
+  — the anti-gaming design working as intended.
+
 ## [2.0.0] — 2026-07
 
 Every round became a tournament.

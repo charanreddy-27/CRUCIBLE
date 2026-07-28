@@ -147,6 +147,12 @@ envelope and hands each candidate deliberately different quality. The end-to-end
 tests then run real loops — real worktrees, real gates — and assert that the
 right candidate won.
 
+The fake also *enforces* the real CLI's contract rather than merely impersonating
+it. That distinction matters: an earlier version accepted anything after
+`--json-schema`, which kept the suite green while the critic could never have
+worked against the real CLI. See
+[the deep dive](docs/PROJECT_DEEP_DIVE.md#when-the-fake-lied).
+
 ## Documentation
 
 | | |
@@ -161,8 +167,19 @@ right candidate won.
 
 Builders run with `--dangerously-skip-permissions`. That is acceptable **only
 because** each one's working directory is a throwaway candidate worktree created
-by the run. **Never point CRUCIBLE at an existing repo.** A stricter
-`--allowedTools` whitelist is left commented out in the config block.
+by the run. **Never point CRUCIBLE at an existing repo.**
+
+For scoped permissions instead, set `BUILDER_ALLOWED_TOOLS` in `crucible.py` or
+export `CRUCIBLE_BUILDER_ALLOWED_TOOLS`:
+
+```bash
+export CRUCIBLE_BUILDER_ALLOWED_TOOLS="Edit,Write,Read,Glob,Grep,Bash(git *),Bash(python *),Bash(pytest *),Bash(ruff *)"
+```
+
+**Running as root?** The CLI refuses `--dangerously-skip-permissions` under
+root or sudo, so containers and CI must take the scoped path. Preflight checks
+for this and says so up front, rather than letting every builder invocation die
+on an unparseable envelope.
 
 ---
 
