@@ -219,6 +219,62 @@
 </section>
 
 <section class="wrap">
+  <p class="eyebrow">Proof</p>
+  <h2>It passed both gates. The critic still gave it 3/10.</h2>
+  <p>
+    All of the above is design talk until you run it. So here's a real run,
+    recorded: build an expense tracker, one candidate, three-dollar cap.
+  </p>
+
+  <div class="term">
+    <div class="term-bar"><i></i><i></i><i></i><span>acceptance run</span></div>
+<pre><code>Round 1  gates <span class="c-ok">2/2 pass</span>   min score <span class="c-bad">3</span>/10   13 must_fix   $1.6042
+Round 2  gates <span class="c-ok">2/2 pass</span>   min score <span class="c-acc">6</span>/10    9 must_fix   $1.5162
+
+stop reason : <span class="c-acc">budget</span>   ($3.1204 over the $3.00 cap)
+best        : round 2
+</code></pre>
+  </div>
+
+  <p>
+    Round one was green on <code>pytest</code> and <code>ruff</code> and still
+    drew thirteen blocking defects. The best of them:
+  </p>
+  <ul class="tight">
+    <li>
+      <code>if amount &lt;= 0</code> doesn't reject NaN or Infinity — every NaN
+      comparison is False, and <code>inf &lt;= 0</code> is False. So
+      <code>add nan food</code> was quietly accepted.
+    </li>
+    <li>
+      <code>save_expenses()</code> truncated the file before writing. A crash
+      mid-dump would take every recorded expense with it.
+    </li>
+    <li>
+      <code>return 1</code> was unreachable, because
+      <code>add_subparsers(required=True)</code> makes argparse exit first.
+    </li>
+    <li>
+      And it reviewed the <em>tests</em> just as hard:
+      <code>assert 'Error' in stderr</code> would pass on any error text at all.
+    </li>
+  </ul>
+  <p>
+    Round two fixed them — <code>math.isfinite</code>, atomic temp-file writes,
+    <code>allow_nan=False</code>, tests from 14 to 26 — and scored 6. Then the
+    critic found <em>new</em>, deeper problems in the revision: NaN literals
+    sneaking back in through <code>json.loads()</code> on the read path, float
+    rounding losing sub-cent amounts.
+  </p>
+  <p>
+    That last part matters most. It didn't run out of things to say, and it
+    didn't start agreeing with itself — which is exactly what a model reviewing
+    its own work does.
+    <a href="https://github.com/charanreddy-27/CRUCIBLE/blob/HEAD/docs/ACCEPTANCE_RUN.md">The full run is recorded here.</a>
+  </p>
+</section>
+
+<section class="wrap">
   <p class="eyebrow">Tech stack</p>
   <h2>And why each one.</h2>
   <div class="stack-item">
