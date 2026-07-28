@@ -34,6 +34,11 @@ Found by running the real CLI for the first time instead of only the fake.
   letting every builder invocation fail with an unparseable envelope.
 
 ### Verified
+- **The spec's §10 acceptance run, executed live.** Two rounds, 3/10 → 6/10,
+  stopped on the budget rule at $3.12, `best` correctly pinned to round 2, and
+  the delivered artifact passes 40 tests and works. Round 1 passed both gates and
+  still drew 13 blocking defects from the critic — the design's central claim,
+  demonstrated rather than asserted. Recorded in `docs/ACCEPTANCE_RUN.md`.
 - `--max-turns` overflow behaves as the spec assumed: exit 1, `is_error: true`,
   `subtype: error_max_turns`. Worth pinning down because the flag is accepted
   but undocumented in `claude -p --help`.

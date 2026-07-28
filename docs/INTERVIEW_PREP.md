@@ -222,21 +222,35 @@ continues on the survivors.
 > `structured_output`, read-only tool scoping. That's also how I found a bug the
 > green test suite was hiding, which is a story in itself.
 >
-> The honest boundary: a complete multi-round tournament driven by real builders
-> is still untried, and the reason is cost — every invocation carries about
-> twenty cents of cache creation before it does any work.
+> And I ran it for real. Round one passed both gates and the critic still scored
+> it 3 out of 10 with 13 blocking defects. Round two fixed them and scored 6. The
+> run stopped on its budget rule at $3.12, tagged round two as best, and
+> `git checkout best` gives you 40 passing tests and a CLI that works.
+>
+> The honest boundary: that run was one candidate. A live *multi-candidate*
+> tournament is still untried — selection and promotion are covered by the tests
+> against the fake, where I can control who deserves to win. Cost is the reason,
+> not doubt.
 
 > **Note:** stating that boundary is a strength, not a weakness. Interviewers
 > notice people who know where their evidence stops. Don't dress it up.
 
 **"What did the real critic actually say?"**
-> Good question to invite, because the answer sells the design. I pointed it at a
-> deliberately weak module — a `divide` function with one test,
-> `assert divide(6, 3) == 2`. It scored test_quality 2 out of 10 and explained
-> that the assertion is satisfied by `return 2`, by integer division, and by
-> `return 6 / b` — so it cannot distinguish a correct implementation from three
-> wrong ones. That's the anti-gaming rubric doing precisely what it was built
-> for, on the first real run.
+> Good question to invite, because the answer sells the design. On the acceptance
+> run it reviewed an expense tracker that passed both gates and found that
+> `if amount <= 0` doesn't reject NaN or Infinity — every NaN comparison is
+> False, and `inf <= 0` is False — so `add nan food` was accepted. It caught a
+> non-atomic write that would destroy the whole data file on a crash mid-dump. It
+> caught `return 1` being unreachable because `add_subparsers(required=True)`
+> exits first.
+>
+> And it reviewed the *tests* just as hard: it flagged
+> `assert 'Error' in stderr` as an assertion that would pass on any error text.
+> That's `test_quality` being its own scored dimension, doing its job.
+>
+> Then the next round fixed them — `math.isfinite`, atomic temp-file writes,
+> `allow_nan=False`, tests from 14 to 26 — and the score went 3 to 6. That's the
+> loop working, on code no human wrote.
 
 **"What does it cost to run?"**
 > It scales with N: roughly 3× the builder cost per round at three candidates,
@@ -258,7 +272,7 @@ continues on the survivors.
 - **Adaptive N** — sample wide on round 1 where variance is highest, narrow as it converges. Same budget, better allocation.
 - **A critic ensemble** for close calls. One opinion currently decides a whole round, and that's the thinnest part of the design.
 - **Cross-pollination** — the losing candidates often solve *part* of the problem better. Right now that work is discarded; feeding it to the next round's builders is the obvious next lever.
-- **The full live acceptance run.** The critic contract is verified against the real CLI and the orchestration against the fake; a complete multi-round tournament with real builders is the remaining gap, and cost is why.
+- **A live multi-candidate tournament.** The acceptance run was `-n 1`; selection and promotion across real competing builders is the remaining gap, and cost is why — roughly 3× per round.
 - **A hard per-call budget** using the CLI's `--max-budget-usd`, which would make the cost cap a limit rather than an after-the-fact check.
 - **Resumability**, which I deliberately skipped — `state.json` makes a crashed run inspectable but not restartable. Reconciling on-disk git state with recorded state is real complexity for a rare case, and I'd rather say that than pretend it was an oversight.
 

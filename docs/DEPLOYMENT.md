@@ -186,7 +186,8 @@ global git identity — worth knowing if you fork it.
 - [ ] **Point DNS** — add the `crucible` CNAME at your DNS provider, or update the absolute URLs if you pick another hostname.
 - [ ] **Verify the social card** — paste the live URL into [opengraph.xyz](https://www.opengraph.xyz) and confirm `og.png` renders. LinkedIn caches aggressively; use their [Post Inspector](https://www.linkedin.com/post-inspector/) to force a refresh.
 - [ ] **Record a real run** and replace the README hero image.
-- [ ] **Run the full live acceptance run.** The critic contract is already verified against the real CLI; what's untried is a complete multi-round tournament with real builders. Raise `MAX_COST_USD` first — each invocation carries roughly $0.20 of cache creation before it does any work, so `-n 3` over several rounds adds up fast. Start with `-n 1` to sanity-check the builder path cheaply.
+- [x] ~~Run the live acceptance run~~ — done at `-n 1`, recorded in [ACCEPTANCE_RUN.md](ACCEPTANCE_RUN.md). Cost $3.12 over two rounds.
+- [ ] **Optionally run a live `-n 3` tournament** to exercise multi-candidate selection against real builders. Budget roughly 3× the single-candidate run per round; `--budget` and `--max-rounds` bound it.
 - [ ] **Confirm your email** — the docs and site use `charanreddychanda@gmail.com`. Your git identity here is `charanreddychanda27@gmail.com`. Pick one and make it consistent.
 - [ ] **Point the Résumé button** at a real file — it currently links to your portfolio homepage (`site/about.html`, contact card).
 - [ ] **Post on LinkedIn**, then drop the URL into `site/project.html` (the "LinkedIn post" row, currently a placeholder) and any README reference.

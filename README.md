@@ -160,12 +160,31 @@ it. That distinction matters: an earlier version accepted anything after
 worked against the real CLI. See
 [the deep dive](docs/PROJECT_DEEP_DIVE.md#when-the-fake-lied).
 
+## Does it actually work?
+
+Yes — [here's the recorded run](docs/ACCEPTANCE_RUN.md).
+
+Round 1 passed **both gates** (`pytest` green, `ruff` clean) and the critic still
+returned 13 blocking defects, scoring it 3/10. Among them: `if amount <= 0`
+doesn't reject NaN or Infinity, because every NaN comparison is False and
+`inf <= 0` is False — so `add nan food` was accepted. It also flagged a test
+asserting `'Error' in stderr`, which would pass on any error text.
+
+Round 2 fixed them — `math.isfinite`, atomic temp-file writes, `allow_nan=False`,
+14 → 26 tests — and scored 6/10. The run stopped on `budget` at $3.12, tagged
+round 2 as `best`, and `git checkout best` yields 40 passing tests and a CLI that
+does what was asked.
+
+That is the whole thesis in one run: **green gates are necessary, never
+sufficient.**
+
 ## Documentation
 
 | | |
 |---|---|
 | [`docs/PROJECT_DEEP_DIVE.md`](docs/PROJECT_DEEP_DIVE.md) | Architecture, data flow, folder structure, tradeoffs |
 | [`docs/INTERVIEW_PREP.md`](docs/INTERVIEW_PREP.md) | Walkthrough, STAR stories, likely Q&A |
+| [`docs/ACCEPTANCE_RUN.md`](docs/ACCEPTANCE_RUN.md) | A real recorded run: what the critic caught and what it cost |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Shipping the site to Vercel, plus the manual checklist |
 | [`CRUCIBLE_SPEC.md`](CRUCIBLE_SPEC.md) | The original v1 design record |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed and when |
