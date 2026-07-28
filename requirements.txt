@@ -1,0 +1,5 @@
+# CRUCIBLE's controller is stdlib-only. These are the gate tools it runs
+# against the code it builds (see GATES in crucible.py).
+pytest
+pytest-timeout
+ruff

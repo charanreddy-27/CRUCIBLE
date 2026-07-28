@@ -1,0 +1,10 @@
+# Run artifacts: each run creates its own workspace/ git repo, plus logs,
+# state, and reports. Runs are local products, not source.
+runs/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/

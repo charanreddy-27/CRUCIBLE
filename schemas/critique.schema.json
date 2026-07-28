@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "scores": {
+      "type": "object",
+      "properties": {
+        "correctness":  {"type": "integer", "minimum": 1, "maximum": 10},
+        "completeness": {"type": "integer", "minimum": 1, "maximum": 10},
+        "robustness":   {"type": "integer", "minimum": 1, "maximum": 10},
+        "code_quality": {"type": "integer", "minimum": 1, "maximum": 10},
+        "test_quality": {"type": "integer", "minimum": 1, "maximum": 10}
+      },
+      "required": ["correctness", "completeness", "robustness",
+                   "code_quality", "test_quality"]
+    },
+    "must_fix": {"type": "array", "items": {"type": "string"}},
+    "summary":  {"type": "string"},
+    "verdict":  {"type": "string", "enum": ["PASS", "REVISE"]}
+  },
+  "required": ["scores", "must_fix", "summary", "verdict"]
+}
