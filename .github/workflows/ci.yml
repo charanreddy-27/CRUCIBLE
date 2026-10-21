@@ -32,3 +32,38 @@ jobs:
 
       - name: Test
         run: python -m pytest tests/ -q
+
+  # The whole product, offline: a real tournament against the scripted critic.
+  # Its RUN_REPORT.html is uploaded, so every push leaves a report to open.
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install gate tooling
+        run: python -m pip install --upgrade pip pytest pytest-timeout ruff
+
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+
+      - name: Run the demo
+        env:
+          CRUCIBLE_DEMO_PACE: "0"
+          CRUCIBLE_RUNS_DIR: demo-runs
+        run: |
+          python crucible.py --demo
+          run=$(ls -d demo-runs/*/)
+          grep -q '"stop_reason": "pass"' "$run/state.json"
+          cat "$run/RUN_REPORT.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the run report
+        uses: actions/upload-artifact@v4
+        with:
+          name: crucible-demo-report
+          path: demo-runs/*/RUN_REPORT.*
