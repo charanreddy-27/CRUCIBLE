@@ -59,6 +59,13 @@ A run you can watch, and a report you can read.
   doesn't exist (a final round that promoted nothing) or diff the winner against
   itself (`-n 1`). It now names the last promoted round and one of its real
   losers, or leaves the line out. The markdown report had the same problem.
+- A relative `CRUCIBLE_RUNS_DIR` (CI uses `demo-runs`) broke every candidate:
+  worktree paths stopped resolving once a subprocess ran inside the workspace,
+  and the resulting `FileNotFoundError` was reported as "`claude` not found".
+  The runs directory is now resolved at startup, and that error names what
+  actually failed to launch.
+- An empty idea is reported as empty before preflight runs, instead of as a
+  missing `claude` on machines without the CLI.
 
 ## [2.0.1] — 2026-07
 

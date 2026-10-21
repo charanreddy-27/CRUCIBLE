@@ -623,6 +623,27 @@ def test_demo_never_resolves_claude_by_name(tmp_path):
     assert json.loads(builder.read_text())["session_id"].startswith("demo-")
 
 
+def test_demo_with_relative_runs_dir(tmp_path):
+    """CI sets CRUCIBLE_RUNS_DIR=demo-runs. Every candidate subprocess runs with a
+    cwd under it, so a relative path must be resolved once, up front."""
+    sentinel_dir = tmp_path / "bin"
+    sentinel_dir.mkdir()
+    sentinel = sentinel_dir / "claude"
+    sentinel.write_text("#!/bin/sh\nexit 1\n")
+    sentinel.chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if k != "CRUCIBLE_BUILDER_ALLOWED_TOOLS"}
+    env.update(
+        PATH=f"{sentinel_dir}{os.pathsep}{os.environ['PATH']}",
+        CRUCIBLE_RUNS_DIR="demo-runs", CRUCIBLE_DEMO_PACE="0", NO_COLOR="1",
+    )  # fmt: skip
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "crucible.py"), "--demo", "-n", "1", "--max-rounds", "1"],
+        capture_output=True, text=True, env=env, cwd=tmp_path, timeout=300,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert next((tmp_path / "demo-runs").glob("*/RUN_REPORT.html"))
+
+
 def test_demo_takes_no_idea():
     proc = subprocess.run(
         [sys.executable, str(ROOT / "crucible.py"), "--demo", "a static site generator"],

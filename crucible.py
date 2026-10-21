@@ -103,7 +103,10 @@ ROOT = Path(__file__).resolve().parent
 PROMPTS = ROOT / "prompts"
 SCHEMA = ROOT / "schemas" / "critique.schema.json"
 # Overridable so a test suite can run real loops without writing into the repo.
-RUNS = Path(os.environ.get("CRUCIBLE_RUNS_DIR", ROOT / "runs"))
+# Absolute from the start: candidate worktrees and every `claude` subprocess
+# take paths under here as their cwd, and a relative path stops resolving the
+# moment a subprocess runs from inside the workspace.
+RUNS = Path(os.environ.get("CRUCIBLE_RUNS_DIR", ROOT / "runs")).resolve()
 
 TRUNK = "trunk"  # the promoted line of history inside workspace/
 GATE_FEEDBACK_LINES = 120  # tail of failure output handed to the next builder
@@ -349,7 +352,11 @@ def invoke_claude(
             last_raw = f"<timeout after {timeout}s>"
             continue
         except FileNotFoundError:
-            die("`claude` CLI not found on PATH — https://code.claude.com/docs/en/headless")
+            if not cwd.is_dir():
+                die(f"{label}: working directory {cwd} does not exist")
+            if argv[0] == "claude":
+                die("`claude` CLI not found on PATH — https://code.claude.com/docs/en/headless")
+            die(f"{label}: cannot launch {argv[0]}")
 
         last_raw = proc.stdout or ""
         try:
@@ -1742,11 +1749,8 @@ def main() -> int:
     # Rebind the caps so every reference — loop, stop rules, report — agrees.
     MAX_ROUNDS, MAX_COST_USD = args.max_rounds, args.budget
 
-    if args.demo:
-        enable_demo()
-    preflight()
-
-    # Idea: a readable file path, else literal inline text.
+    # Idea: a readable file path, else literal inline text. Checked before
+    # preflight so a bad input is reported as such on any machine.
     if args.idea is None:
         idea = DEMO_IDEA
     else:
@@ -1758,6 +1762,10 @@ def main() -> int:
         idea = idea_path.read_text(encoding="utf-8") if is_file else args.idea
     if not idea.strip():
         die("the idea is empty")
+
+    if args.demo:
+        enable_demo()
+    preflight()
 
     started = dt.datetime.now()
     stamp = started.strftime("%Y-%m-%d_%H%M")
