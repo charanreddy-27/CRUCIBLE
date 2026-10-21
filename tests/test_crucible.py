@@ -8,6 +8,7 @@ asserted rather than assumed.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import shutil
@@ -359,3 +360,323 @@ def test_root_without_a_whitelist_is_refused_up_front(tmp_path):
     )  # fmt: skip
     assert proc.returncode == 1
     assert "root" in proc.stderr and "BUILDER_ALLOWED_TOOLS" in proc.stderr
+
+
+# ───────────────────────────── html report ─────────────────────────────────
+
+HOSTILE_IDEA = "<script>alert('pwned')</script> & a tracker"
+
+
+@requires_tools
+def test_html_report_shows_the_tournament_escaped(fake_claude, tmp_path):
+    """Every candidate, the winner, the stop reason — and no raw user markup."""
+    state, run_dir, out = run_crucible(fake_claude, tmp_path, "tourney", HOSTILE_IDEA)
+    page = (run_dir / "RUN_REPORT.html").read_text()
+
+    # The idea is user input; it must never reach the page as markup.
+    assert "<script>alert" not in page
+    assert "&lt;script&gt;alert(&#x27;pwned&#x27;)&lt;/script&gt; &amp; a tracker" in page
+
+    assert '<span class="badge good" title="stop reason">pass</span>' in page
+    for k in (1, 2, 3):
+        assert f'id="r1-c{k}"' in page
+    # Exactly one winner, and it is the candidate state.json says won.
+    assert page.count('data-winner="true"') == 1
+    assert 'id="r1-c3" data-winner="true"' in page
+    assert "gates red — not reviewed" in page  # c1 never reached the critic
+    assert "fake critique of candidate 3, round 1" in page  # read from critique.json
+    assert "app.py: candidate 2 needs input validation" in page  # c2's must_fix
+    assert "RUN_REPORT.html" in out
+
+    # What the page needs to re-render faithfully later is recorded, not recomputed.
+    assert state["best_tag"] == 1 and "`best` points at round 1" in state["tag_note"]
+    assert state["version"] == crucible.__version__
+    assert state["max_rounds"] == crucible.MAX_ROUNDS and state["demo"] is False
+
+
+@requires_tools
+@pytest.mark.parametrize(
+    "scenario,extra,why",
+    [
+        ("alldie", (), "builder error — never reached the gates, not reviewed"),
+        ("allred", ("--max-rounds", "2"), "gates red — not reviewed"),
+    ],
+)
+def test_html_report_survives_degenerate_runs(fake_claude, tmp_path, scenario, extra, why):
+    """A run where nothing was scored is exactly when the report must explain itself."""
+    _, run_dir, _ = run_crucible(fake_claude, tmp_path, scenario, "degenerate", *extra)
+    page = (run_dir / "RUN_REPORT.html").read_text()
+    assert why in page
+    # The cause, not just the outcome: nothing reached the critic, so it never ran.
+    if scenario == "allred":
+        assert "none passed the gates, so none reached the critic" in page
+        assert "critic failed" not in page
+    assert "No candidate was ever scored" in page
+    assert "no critic-scored round" in page
+    assert page.count('data-winner="true"') == (0 if scenario == "alldie" else 2)
+
+
+def _write_run(run_dir: Path, history: list, **extra) -> None:
+    run_dir.mkdir(parents=True)
+    state = {
+        "run_id": run_dir.name, "round": len(history), "candidates_per_round": 1,
+        "best_round": None, "best_overall": None, "total_cost_usd": 0.0,
+        "history": history, "stop_reason": None, **extra,
+    }  # fmt: skip
+    (run_dir / "state.json").write_text(json.dumps(state))
+
+
+def _cand(cid, status="green", cost=0.25, min_score=None, verdict=None):
+    return {"id": cid, "angle": "straight read", "status": status, "gates_passed": "2/2",
+            "min_score": min_score, "verdict": verdict, "cost_usd": cost, "commit": "abc12345"}
+
+
+def test_html_report_says_an_interrupted_round_was_interrupted(tmp_path):
+    """A round on disk that never reached history was cut short — the critic was
+    never asked, so the page must not blame it, and its spend still counts."""
+    run_dir = tmp_path / "cut-short"
+    _write_run(run_dir, [], version=crucible.__version__, tag_note=None)
+    sel = run_dir / "rounds" / "round_1" / "selection.json"
+    sel.parent.mkdir(parents=True)
+    sel.write_text(json.dumps({"round": 1, "base": "deadbeef", "winner": None,
+                               "candidates": [_cand(1), _cand(2), _cand(3)]}))
+    page = crucible.render_html_report(run_dir)
+    assert "interrupted — the run stopped during this round" in page
+    assert "the run stopped before its critique" in page
+    assert "critic failed" not in page and "every candidate failed" not in page
+    assert "the run was interrupted or is still going" in page
+    assert "predates tag notes" not in page and "did not finish" in page
+    assert "$0.75" in page  # the cut-short round's spend, not state.json's $0.00
+
+
+def test_html_report_blames_the_critic_only_when_it_failed(tmp_path):
+    run_dir = tmp_path / "critic-down"
+    history = [{"round": 1, "base": "deadbeef", "winner": None, "gates": "critic_error",
+                "min_score": None, "verdict": None, "cost_usd": 0.9,
+                "candidates": [_cand(1), _cand(2)]}]
+    _write_run(run_dir, history, stop_reason="critic_error", version=crucible.__version__)
+    page = crucible.render_html_report(run_dir)
+    assert "no winner — the critic failed on every green candidate" in page
+    assert "only gates-green candidates reach the critic" not in page
+    assert "gates green, but the critic failed twice" in page
+
+
+def test_losing_branch_names_refs_that_exist():
+    field = [_cand(1, "dead"), _cand(2), _cand(3, "red")]
+    promoted = {"round": 1, "winner": 2, "candidates": field}
+    died = {"round": 2, "winner": None, "gates": "builder_error", "candidates": [_cand(1, "dead")]}
+    # The final round never promoted, so its round-2 tag does not exist: use round 1,
+    # and prefer a loser that built something over one that died.
+    assert crucible.losing_branch([promoted, died]) == (1, 3)
+    solo = {"round": 1, "winner": 1, "candidates": [_cand(1)]}
+    assert crucible.losing_branch([solo]) == (1, None)  # -n 1: nothing lost
+    assert crucible.losing_branch([died]) is None
+
+
+def test_html_report_renders_a_run_with_zero_rounds(tmp_path):
+    run_dir = tmp_path / "empty-run"
+    _write_run(run_dir, [])
+    page = crucible.render_html_report(run_dir)
+    assert "No round completed" in page
+    assert "unfinished" in page  # no stop_reason recorded
+    assert "(IDEA.md is missing)" in page
+
+
+@pytest.mark.parametrize(
+    "critique", ["{not json", '["a", "list"]', '{"scores": {"correctness": "high"}}', "\xff"]
+)
+def test_html_report_skips_a_corrupt_critique(tmp_path, critique):
+    """One bad critique.json costs its card the dimension bars — never the report."""
+    run_dir = tmp_path / "solo"
+    cand = {"id": 1, "angle": "straight read", "status": "green", "gates_passed": "2/2",
+            "min_score": 6, "verdict": "REVISE", "cost_usd": 0.3, "commit": "abc"}  # fmt: skip
+    _write_run(
+        run_dir,
+        [{"round": 1, "base": "b", "winner": 1, "gates": "pass", "min_score": 6,
+          "verdict": "REVISE", "cost_usd": 0.3, "candidates": [cand]}],  # fmt: skip
+        stop_reason="max_rounds", best_round=1, best_overall=6,
+    )
+    (run_dir / "IDEA.md").write_text("# A solo run\n\nwith -n 1")
+    cdir = run_dir / "rounds" / "round_1" / "cand_1"
+    cdir.mkdir(parents=True)
+    (cdir / "critique.json").write_bytes(critique.encode("latin-1"))
+    page = crucible.render_html_report(run_dir)
+    assert "critique.json missing or unreadable" in page
+    assert 'id="r1-c1" data-winner="true"' in page
+    assert "<h1>A solo run</h1>" in page
+    assert ">R1</text>" in page  # a single round still charts
+
+
+def test_html_rendering_bug_never_fails_a_run(tmp_path, monkeypatch, capsys):
+    def broken(run_dir):
+        raise RuntimeError("renderer bug")
+
+    monkeypatch.setattr(crucible, "render_html_report", broken)
+    assert crucible.write_html_report(tmp_path) is None
+    assert "RUN_REPORT.html not written" in capsys.readouterr().out
+    assert not (tmp_path / "RUN_REPORT.html").exists()
+
+
+@requires_tools
+def test_report_flag_rerenders_an_existing_run(fake_claude, tmp_path):
+    _, run_dir, _ = run_crucible(fake_claude, tmp_path, "tourney", "rerender test")
+    page = run_dir / "RUN_REPORT.html"
+    original = page.read_text()
+    page.unlink()
+
+    # No claude, no git, no gate tools on PATH, and (as root) no allow-list:
+    # preflight would refuse all of that, so this proves --report never runs it.
+    env = {k: v for k, v in os.environ.items() if k != "CRUCIBLE_BUILDER_ALLOWED_TOOLS"}
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "crucible.py"), "--report", str(run_dir)],
+        capture_output=True, text=True, env={**env, "PATH": str(empty)},
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == str(page)
+    # Rendered from disk alone, so a re-render is the same page.
+    assert page.read_text() == original
+
+
+def test_report_flag_without_state_json_fails_clearly(tmp_path):
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "crucible.py"), "--report", str(tmp_path)],
+        capture_output=True, text=True,
+    )  # fmt: skip
+    assert proc.returncode == 1
+    assert "no state.json" in proc.stderr
+
+
+def test_no_idea_needs_demo_or_report():
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "crucible.py")], capture_output=True, text=True
+    )
+    assert proc.returncode != 0
+    assert "an idea is required" in proc.stderr
+
+
+# ─────────────────────────────── demo mode ─────────────────────────────────
+
+
+@requires_tools
+@pytest.mark.parametrize("extra", [(), ("-n", "1")])
+def test_demo_runs_a_whole_tournament_offline(tmp_path, extra):
+    """No fake on PATH and no allow-list: --demo must supply both itself."""
+    env = {k: v for k, v in os.environ.items() if k != "CRUCIBLE_BUILDER_ALLOWED_TOOLS"}
+    env.update(CRUCIBLE_RUNS_DIR=str(tmp_path / "runs"), CRUCIBLE_DEMO_PACE="0", NO_COLOR="1")
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "crucible.py"), "--demo", *extra],
+        capture_output=True, text=True, env=env, timeout=300,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    run_dir = next((tmp_path / "runs").iterdir())
+    state = json.loads((run_dir / "state.json").read_text())
+
+    assert "demo" in state["run_id"] and state["demo"] is True
+    assert state["stop_reason"] == "pass"
+    assert state["best_round"] == 3 and state["best_overall"] >= crucible.PASS_THRESHOLD
+    assert 0 < state["total_cost_usd"] < state["budget_usd"]
+    # Round 1's c1 is red because its own test really fails, not because we say so.
+    c1 = state["history"][0]["candidates"][0]
+    assert c1["status"] == "red" and c1["gates_passed"] == "1/2"
+    assert "failed" in (run_dir / "rounds" / "round_1" / "cand_1" / "gates.txt").read_text()
+
+    assert "(simulated — demo mode, no API calls)" in proc.stdout
+    page = (run_dir / "RUN_REPORT.html").read_text()
+    assert "simulated · demo mode, no API calls" in page
+    assert '<span class="badge good" title="stop reason">pass</span>' in page
+
+    # The delivered artifact is real: its tests pass at `best`.
+    ws = run_dir / "workspace"
+    assert git_out(ws, "rev-parse", "best") == git_out(ws, "rev-parse", "round-3")
+    tests = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+        cwd=ws, capture_output=True, text=True,
+    )  # fmt: skip
+    assert tests.returncode == 0, tests.stdout
+
+
+@requires_tools
+def test_demo_never_resolves_claude_by_name(tmp_path):
+    """A `claude` first on PATH must never run in a demo — it could be the real,
+    billed CLI. The demo launches its fake by absolute argv, so nothing can fall
+    through to a name lookup (a noexec temp dir once let exactly that happen)."""
+    sentinel_dir = tmp_path / "bin"
+    sentinel_dir.mkdir()
+    called = tmp_path / "REAL_CLAUDE_WAS_CALLED"
+    sentinel = sentinel_dir / "claude"
+    sentinel.write_text(f"#!/bin/sh\ntouch {called}\nexit 1\n")
+    sentinel.chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if k != "CRUCIBLE_BUILDER_ALLOWED_TOOLS"}
+    env.update(
+        PATH=f"{sentinel_dir}{os.pathsep}{os.environ['PATH']}",
+        CRUCIBLE_RUNS_DIR=str(tmp_path / "runs"), CRUCIBLE_DEMO_PACE="0", NO_COLOR="1",
+    )  # fmt: skip
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "crucible.py"), "--demo", "-n", "1", "--max-rounds", "1"],
+        capture_output=True, text=True, env=env, timeout=300,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert not called.exists(), "--demo invoked the `claude` on PATH"
+    builder = next((tmp_path / "runs").glob("*/rounds/round_1/cand_1/builder.json"))
+    assert json.loads(builder.read_text())["session_id"].startswith("demo-")
+
+
+def test_demo_takes_no_idea():
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "crucible.py"), "--demo", "a static site generator"],
+        capture_output=True, text=True,
+    )  # fmt: skip
+    assert proc.returncode != 0
+    assert "drop the idea" in proc.stderr
+
+
+@requires_tools
+def test_preflight_git_probe_works_outside_a_repo(tmp_path, monkeypatch):
+    """`git worktree list -h` exits 128 outside a repository on modern git; the
+    probe must not mistake that for missing worktree support."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(crucible, "CLAUDE_CMD", [sys.executable, str(crucible.DEMO_FAKE)])
+    monkeypatch.setattr(crucible, "BUILDER_ALLOWED_TOOLS", "Read")
+    crucible.preflight()  # dies (SystemExit) if anything is reported missing
+
+
+def test_demo_without_the_checkout_dies_clearly(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(crucible, "DEMO_FAKE", tmp_path / "missing.py")
+    with pytest.raises(SystemExit) as exc:
+        crucible.enable_demo()
+    assert exc.value.code == 1
+    assert "ships with the repository" in capsys.readouterr().err
+
+
+# ──────────────────────────── terminal color ───────────────────────────────
+
+
+class FakeTTY(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def test_no_color_wins(monkeypatch):
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    assert not crucible.use_color(FakeTTY())
+
+
+def test_force_color_colors_a_pipe(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    assert crucible.use_color(io.StringIO())
+    monkeypatch.setattr(sys, "stdout", io.StringIO())
+    assert crucible.paint("RED", "red", "bold") == "\033[31;1mRED\033[0m"
+
+
+def test_color_follows_the_tty_and_is_plain_otherwise(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    assert crucible.use_color(FakeTTY())
+    assert not crucible.use_color(io.StringIO())
+    # Off means byte-identical: tests and pipes read log() output verbatim.
+    monkeypatch.setattr(sys, "stdout", io.StringIO())
+    assert crucible.paint("green", "green") == "green"
