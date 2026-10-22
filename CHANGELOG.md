@@ -3,6 +3,70 @@
 Notable changes to CRUCIBLE. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] — 2026-10-21
+
+A run you can watch, and a report you can read.
+
+### Added
+- **`RUN_REPORT.html`**, written beside `RUN_REPORT.md` at termination: the stop
+  reason with a one-line explanation, KPI tiles, a score-progression chart
+  (every scored candidate's min score per round, the winners joined, the pass
+  threshold and best round marked), a cumulative-cost chart against the budget
+  cap, and one card per candidate per round — status, gates, the five rubric
+  dimensions with the weakest link highlighted, verdict, cost, commit, and the
+  critique's summary and `must_fix` list. Single file, stdlib-rendered, inline
+  SVG, no fonts or scripts from anywhere: it opens offline. Dark by default,
+  follows `prefers-color-scheme`, with a remembered toggle.
+- **The renderer reads only from disk** (`state.json`, `selection.json`,
+  `critique.json`, `IDEA.md`), so it can re-render any past run, and a missing
+  or corrupt `critique.json` costs one card its bars rather than the report. A
+  rendering bug is caught and logged — it can never change a run's outcome.
+- **`--report RUN_DIR`** re-renders a past run's HTML report. It skips
+  preflight, so it needs no `claude`, `git` or gate tools.
+- **`--demo`** runs a whole tournament offline, with no API key and no cost, in
+  a few seconds. A scripted `claude` (`demo/fake_claude.py`) is launched by
+  absolute path — never looked up by name — so nothing can route a simulated
+  run to the real CLI; everything else is real — worktrees, `pytest` and `ruff`
+  gates, promotion, stop rules. Its builders write a real expense tracker that gets
+  better each round; round 1's first candidate ships a genuine bug its own test
+  catches, and round 3's winner passes. Demo runs are labelled simulated in the
+  terminal, in `state.json` and in the report. Needs the repository checkout.
+- **Terminal color** for round headers, gate results, scores, winners and the
+  final summary, when stdout is a TTY. `NO_COLOR` disables it and `FORCE_COLOR`
+  forces it; with color off, output is byte-identical to before.
+- `state.json` records `version`, `demo`, `max_rounds`, `budget_usd`,
+  `pass_threshold`, `stall_rounds`, `started_at`, `finished_at`, `best_tag` and
+  `tag_note`, so a re-render stays faithful after the defaults change. Every
+  existing field is unchanged.
+
+### Changed
+- The idea argument is optional when `--demo` or `--report` is given; with
+  neither, it is still a usage error. `--demo` refuses an idea: its builders
+  always build the scripted expense tracker, and a report titled with anything
+  else would describe a project the workspace doesn't hold.
+- Builders and critics are launched through one argv prefix, `CLAUDE_CMD`.
+
+### Fixed
+- Found in review before release: an early `--demo` put a shim on `PATH`. Where
+  the shim couldn't execute (a `noexec` temp dir) or wasn't found (Windows runs
+  `.exe`, never `.cmd`), the lookup fell through to a real `claude` while every
+  label still said "simulated". The absolute launch above removes the lookup;
+  a test now puts a booby-trapped `claude` first on `PATH` and asserts it never runs.
+- Preflight's `git worktree` probe ran in the caller's directory, and modern git
+  exits 128 outside a repository — so running `crucible.py` from anywhere but a
+  git checkout reported "no worktree support". It now probes in a scratch repo.
+- The run report's `git diff round-N cand-rN-1` suggestion could name a tag that
+  doesn't exist (a final round that promoted nothing) or diff the winner against
+  itself (`-n 1`). It now names the last promoted round and one of its real
+  losers, or leaves the line out. The markdown report had the same problem.
+- A relative `CRUCIBLE_RUNS_DIR` (CI uses `demo-runs`) broke every candidate:
+  worktree paths stopped resolving once a subprocess ran inside the workspace,
+  and the resulting `FileNotFoundError` was reported as "`claude` not found".
+  The runs directory is now resolved at startup, and that error names what
+  actually failed to launch.
+- An empty idea is reported as empty before preflight runs, instead of as a
+  missing `claude` on machines without the CLI.
+
 ## [2.0.1] — 2026-07
 
 Found by running the real CLI for the first time instead of only the fake.

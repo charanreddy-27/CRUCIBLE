@@ -35,7 +35,22 @@ want to run the tool, see [Running the tool](#running-the-tool).
 3. Deploy.
 
 `site/vercel.json` handles the rest: `cleanUrls` serves `about.html` at
-`/about`, plus security headers and a one-year immutable cache on static assets.
+`/about`, plus security headers and short, revalidating caches on assets. (Not
+`immutable`: the filenames carry no content hash, so an immutable year-long
+cache would pin returning visitors to a stale `styles.css` after every redesign.)
+
+### The generated pages
+
+`site/report.html` and `site/arena-data.js` are produced by a real `--demo` run,
+not written by hand:
+
+```bash
+python scripts/build_site_demo.py
+```
+
+Re-run it after changing the report renderer or the demo story, and commit the
+result. `/report` is that run's `RUN_REPORT.html`; the home page's animated
+arena replays the same run from `arena-data.js`.
 
 ### Option B — CLI
 

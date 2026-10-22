@@ -21,9 +21,11 @@ done.
 
 **"Good enough" is a rule here, not a feeling.**
 
-> ![CRUCIBLE run](site/og.png)
->
-> *Replace with a terminal recording of a live run — see [DEPLOYMENT.md](docs/DEPLOYMENT.md#screenshots-and-recordings).*
+<p align="center">
+  <img src="docs/screenshots/run-report.png" width="860" alt="RUN_REPORT.html from python crucible.py --demo: PASS after three rounds, a score-progression chart rising from 4 to 8, cumulative cost against the $5 cap, and the round 1 tournament — c1 red on a genuine bug, c3 winning.">
+</p>
+
+<p align="center"><sub>A real <code>RUN_REPORT.html</code>, from <code>python crucible.py --demo</code> — <a href="https://crucible.charanreddy.dev/report">open it live</a>.</sub></p>
 
 ## The problem
 
@@ -88,6 +90,8 @@ the losers stay as branches.
 - **Anti-gaming rubric** — `test_quality` is scored separately and capped at 4 for vacuous tests
 - **Fault tolerance** — a dead builder drops its candidate, not the run
 - **Full forensics** — every round writes `builder.json`, `gates.txt`, `critique.json`, `selection.json`, and a `RUN_REPORT.md`
+- **An HTML run report** — `RUN_REPORT.html`: score progression, cost against budget, and every candidate's rubric scores, in one offline file
+- **An offline demo** — `--demo` runs a whole tournament against a simulated `claude`: no API key, no cost, real gates
 - **Rule-based stopping** — `pass` / `max_rounds` / `stalled` / `budget`, with a hard cost cap
 
 ## Quickstart
@@ -97,8 +101,19 @@ git clone https://github.com/charanreddy-27/CRUCIBLE.git
 cd CRUCIBLE
 pip install -r requirements.txt        # pytest, pytest-timeout, ruff
 
+python crucible.py --demo              # watch a whole tournament first — offline, free
 python crucible.py "CLI expense tracker: add, list, summary. JSON storage."
 ```
+
+`--demo` needs no API key and no `claude` CLI. It launches a scripted `claude`
+([`demo/fake_claude.py`](demo/fake_claude.py)) by absolute path — never by name,
+so it can't fall through to a real install — and runs the real controller
+against it — real worktrees, real `pytest` and `ruff` gates, real
+promotion and stop rules — so you can watch three rounds of an expense tracker
+get better in a few seconds: a candidate goes red on a genuine bug, scores
+climb as the critic's findings are fixed, and round 3 passes. Costs shown are
+simulated, and the run is labelled as such everywhere. It needs the repository
+checkout, not just the pip-installed module.
 
 You also need the [`claude` CLI](https://code.claude.com/docs/en/headless) on
 PATH. CRUCIBLE refuses to start if a gate tool, prompt template or the critic
@@ -126,8 +141,18 @@ git branch --list 'cand-*'          # the roads not taken
 git diff round-2 cand-r2-1          # what the losing attempt did differently
 ```
 
-Each run also leaves a `RUN_REPORT.md` with the whole tournament: who ran, who
-went green, who won, and what it cost.
+Each run also leaves a `RUN_REPORT.md` with the whole tournament — who ran, who
+went green, who won, and what it cost — and a `RUN_REPORT.html` beside it that
+shows the same at a glance: score progression across rounds, cumulative cost
+against the budget, and a card per candidate with its five rubric scores and the
+critic's findings. It is a single self-contained file that opens offline.
+
+```bash
+python crucible.py --report runs/<run-id>   # re-render a past run's RUN_REPORT.html
+```
+
+Terminal output is colored when stdout is a terminal; set `NO_COLOR=1` to turn
+that off, or `FORCE_COLOR=1` to keep it through a pipe.
 
 ## Tech stack
 
@@ -159,6 +184,10 @@ it. That distinction matters: an earlier version accepted anything after
 `--json-schema`, which kept the suite green while the critic could never have
 worked against the real CLI. See
 [the deep dive](docs/PROJECT_DEEP_DIVE.md#when-the-fake-lied).
+
+(The demo's fake, [`demo/fake_claude.py`](demo/fake_claude.py), is a separate
+script with a different job: telling a plausible story rather than pinning down
+an assertion. It honours the same contract.)
 
 ## Does it actually work?
 
